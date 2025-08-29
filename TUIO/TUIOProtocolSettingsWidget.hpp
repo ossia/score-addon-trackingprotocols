@@ -1,0 +1,22 @@
+#pragma once
+
+#include <Device/Protocol/ProtocolSettingsWidget.hpp>
+
+class QLineEdit;
+class QSpinBox;
+
+namespace TUIO
+{
+class TUIOProtocolSettingsWidget final : public Device::ProtocolSettingsWidget
+{
+public:
+  TUIOProtocolSettingsWidget(QWidget* parent = nullptr);
+  
+  Device::DeviceSettings getSettings() const override;
+  void setSettings(const Device::DeviceSettings& settings) override;
+
+private:
+  QLineEdit* m_deviceNameEdit{};
+  QSpinBox* m_portEdit{};
+};
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Tracking Protocols",
+  "version": "1.0.0",
+  "short": "Tracking protocols support",
+  "long": "Support for various tracking protocols including TUIO for tangible interfaces",
+  "small": ["Tracking", "TUIO", "Tangible", "Multi-touch"],
+  "key": "score-addon-trackingprotocols",
+  "credits": "Jean-Michaël Celerier",
+  "license": "LGPLv3",
+  "url": "https://ossia.io"
+}
