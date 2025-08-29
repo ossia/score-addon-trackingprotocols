@@ -14,11 +14,25 @@ namespace TUIO
 
 TUIOProtocol::TUIOProtocol(
     const ossia::net::network_context_ptr& ctx,
-    uint16_t port)
+    uint16_t port,
+    int numObjects,
+    int numCursors,
+    int numBlobs)
     : ossia::net::protocol_base{}
     , m_ctx{ctx}
     , m_port{port}
+    , m_num_objects{numObjects}
+    , m_num_cursors{numCursors}
+    , m_num_blobs{numBlobs}
 {
+  // Initialize slot arrays
+  m_object_slots.resize(numObjects);
+  m_cursor_slots.resize(numCursors);
+  m_blob_slots.resize(numBlobs);
+  
+  m_objects.resize(numObjects);
+  m_cursors.resize(numCursors);
+  m_blobs.resize(numBlobs);
 }
 
 TUIOProtocol::~TUIOProtocol()
@@ -43,12 +57,139 @@ void TUIOProtocol::set_device(ossia::net::device_base& dev)
   auto frame_param = frame_node->create_parameter(ossia::val_type::INT);
   frame_param->set_value(0);
   
-  // Create profile nodes
-  root.create_child(std::string("2Dobj"));
-  root.create_child(std::string("2Dcur"));
-  root.create_child(std::string("2Dblb"));
+  // Create profile nodes with fixed slots
+  auto* obj_node = root.create_child(std::string("2Dobj"));
+  for (int i = 0; i < m_num_objects; ++i)
+  {
+    auto* slot_node = obj_node->create_child(std::to_string(i));
+    
+    // Create session_id parameter to show which TUIO session is mapped to this slot
+    slot_node->create_child(std::string("session_id"))->create_parameter(ossia::val_type::INT)->set_value(-1);
+    slot_node->create_child(std::string("active"))->create_parameter(ossia::val_type::BOOL)->set_value(false);
+    
+    // Create all TUIO object parameters
+    slot_node->create_child(std::string("class_id"))->create_parameter(ossia::val_type::INT)->set_value(0);
+    
+    auto* pos_param = slot_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
+    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    pos_param->set_value(ossia::vec2f{0.5f, 0.5f});
+    
+    auto* angle_param = slot_node->create_child(std::string("angle"))->create_parameter(ossia::val_type::FLOAT);
+    angle_param->set_domain(ossia::make_domain(0.0f, static_cast<float>(2 * M_PI)));
+    angle_param->set_value(0.0f);
+    
+    slot_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F)->set_value(ossia::vec2f{});
+    slot_node->create_child(std::string("angle_velocity"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("rotation_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+  }
+  
+  auto* cur_node = root.create_child(std::string("2Dcur"));
+  for (int i = 0; i < m_num_cursors; ++i)
+  {
+    auto* slot_node = cur_node->create_child(std::to_string(i));
+    
+    slot_node->create_child(std::string("session_id"))->create_parameter(ossia::val_type::INT)->set_value(-1);
+    slot_node->create_child(std::string("active"))->create_parameter(ossia::val_type::BOOL)->set_value(false);
+    
+    auto* pos_param = slot_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
+    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    pos_param->set_value(ossia::vec2f{0.5f, 0.5f});
+    
+    slot_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F)->set_value(ossia::vec2f{});
+    slot_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+  }
+  
+  auto* blob_node = root.create_child(std::string("2Dblb"));
+  for (int i = 0; i < m_num_blobs; ++i)
+  {
+    auto* slot_node = blob_node->create_child(std::to_string(i));
+    
+    slot_node->create_child(std::string("session_id"))->create_parameter(ossia::val_type::INT)->set_value(-1);
+    slot_node->create_child(std::string("active"))->create_parameter(ossia::val_type::BOOL)->set_value(false);
+    
+    auto* pos_param = slot_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
+    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    pos_param->set_value(ossia::vec2f{0.5f, 0.5f});
+    
+    auto* angle_param = slot_node->create_child(std::string("angle"))->create_parameter(ossia::val_type::FLOAT);
+    angle_param->set_domain(ossia::make_domain(0.0f, static_cast<float>(2 * M_PI)));
+    angle_param->set_value(0.0f);
+    
+    auto* size_param = slot_node->create_child(std::string("size"))->create_parameter(ossia::val_type::VEC2F);
+    size_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    size_param->set_value(ossia::vec2f{0.1f, 0.1f});
+    
+    auto* area_param = slot_node->create_child(std::string("area"))->create_parameter(ossia::val_type::FLOAT);
+    area_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    area_param->set_value(0.01f);
+    
+    slot_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F)->set_value(ossia::vec2f{});
+    slot_node->create_child(std::string("angle_velocity"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("rotation_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+  }
   
   setup_receive_socket();
+}
+
+int TUIOProtocol::find_or_allocate_slot(int32_t session_id, std::vector<SlotMapping>& slots, 
+                                        ossia::hash_map<int32_t, int>& session_map)
+{
+  // Check if session already has a slot
+  auto it = session_map.find(session_id);
+  if (it != session_map.end())
+  {
+    return it->second;
+  }
+  
+  // Find first free slot (round-robin)
+  for (size_t i = 0; i < slots.size(); ++i)
+  {
+    if (slots[i].session_id == -1)
+    {
+      slots[i].session_id = session_id;
+      slots[i].active = true;
+      session_map[session_id] = i;
+      return i;
+    }
+  }
+  
+  // No free slot available - reuse oldest inactive slot
+  // In a real implementation, you might want to handle this differently
+  for (size_t i = 0; i < slots.size(); ++i)
+  {
+    if (!slots[i].active)
+    {
+      // Remove old mapping
+      if (slots[i].session_id != -1)
+      {
+        session_map.erase(slots[i].session_id);
+      }
+      
+      slots[i].session_id = session_id;
+      slots[i].active = true;
+      session_map[session_id] = i;
+      return i;
+    }
+  }
+  
+  // All slots are active - this shouldn't happen if ALIVE messages are handled correctly
+  // For now, just use slot 0
+  return 0;
+}
+
+void TUIOProtocol::free_slot(int32_t session_id, std::vector<SlotMapping>& slots,
+                             ossia::hash_map<int32_t, int>& session_map)
+{
+  auto it = session_map.find(session_id);
+  if (it != session_map.end())
+  {
+    int slot = it->second;
+    slots[slot].session_id = -1;
+    slots[slot].active = false;
+    session_map.erase(it);
+  }
 }
 
 void TUIOProtocol::setup_receive_socket()
@@ -107,7 +248,6 @@ void TUIOProtocol::on_received_message(const oscpack::ReceivedMessage& msg)
   {
     handle_2Dblb_message(msg);
   }
-  // 2.5D and 3D profiles can be added later
 }
 
 void TUIOProtocol::handle_2Dobj_message(const oscpack::ReceivedMessage& msg)
@@ -292,8 +432,11 @@ void TUIOProtocol::process_2Dobj_set(const oscpack::ReceivedMessage& msg)
   if (it == msg.ArgumentsEnd() || !it->IsInt32())
     return;
   
-  TUIOObject obj;
-  obj.session_id = it->AsInt32();
+  int32_t session_id = it->AsInt32();
+  int slot = find_or_allocate_slot(session_id, m_object_slots, m_object_session_to_slot);
+  
+  TUIOObject& obj = m_objects[slot];
+  obj.session_id = session_id;
   ++it;
   
   if (it == msg.ArgumentsEnd() || !it->IsInt32())
@@ -341,8 +484,9 @@ void TUIOProtocol::process_2Dobj_set(const oscpack::ReceivedMessage& msg)
   obj.rotation_accel = it->AsFloat();
   
   obj.last_update = std::chrono::steady_clock::now();
-  m_objects[obj.session_id] = obj;
-  update_object_parameters(obj.session_id, obj);
+  m_object_slots[slot].active = true;
+  
+  update_object_parameters(session_id, obj);
 }
 
 void TUIOProtocol::process_2Dobj_alive(const oscpack::ReceivedMessage& msg)
@@ -372,8 +516,11 @@ void TUIOProtocol::process_2Dcur_set(const oscpack::ReceivedMessage& msg)
   if (it == msg.ArgumentsEnd() || !it->IsInt32())
     return;
   
-  TUIOCursor cur;
-  cur.session_id = it->AsInt32();
+  int32_t session_id = it->AsInt32();
+  int slot = find_or_allocate_slot(session_id, m_cursor_slots, m_cursor_session_to_slot);
+  
+  TUIOCursor& cur = m_cursors[slot];
+  cur.session_id = session_id;
   ++it;
   
   if (it == msg.ArgumentsEnd() || !it->IsFloat())
@@ -401,8 +548,9 @@ void TUIOProtocol::process_2Dcur_set(const oscpack::ReceivedMessage& msg)
   cur.motion_accel = it->AsFloat();
   
   cur.last_update = std::chrono::steady_clock::now();
-  m_cursors[cur.session_id] = cur;
-  update_cursor_parameters(cur.session_id, cur);
+  m_cursor_slots[slot].active = true;
+  
+  update_cursor_parameters(session_id, cur);
 }
 
 void TUIOProtocol::process_2Dcur_alive(const oscpack::ReceivedMessage& msg)
@@ -432,8 +580,11 @@ void TUIOProtocol::process_2Dblb_set(const oscpack::ReceivedMessage& msg)
   if (it == msg.ArgumentsEnd() || !it->IsInt32())
     return;
   
-  TUIOBlob blob;
-  blob.session_id = it->AsInt32();
+  int32_t session_id = it->AsInt32();
+  int slot = find_or_allocate_slot(session_id, m_blob_slots, m_blob_session_to_slot);
+  
+  TUIOBlob& blob = m_blobs[slot];
+  blob.session_id = session_id;
   ++it;
   
   if (it == msg.ArgumentsEnd() || !it->IsFloat())
@@ -491,8 +642,9 @@ void TUIOProtocol::process_2Dblb_set(const oscpack::ReceivedMessage& msg)
   blob.rotation_accel = it->AsFloat();
   
   blob.last_update = std::chrono::steady_clock::now();
-  m_blobs[blob.session_id] = blob;
-  update_blob_parameters(blob.session_id, blob);
+  m_blob_slots[slot].active = true;
+  
+  update_blob_parameters(session_id, blob);
 }
 
 void TUIOProtocol::process_2Dblb_alive(const oscpack::ReceivedMessage& msg)
@@ -519,53 +671,46 @@ void TUIOProtocol::update_object_parameters(int32_t session_id, const TUIOObject
   if (!m_device)
     return;
   
+  auto it = m_object_session_to_slot.find(session_id);
+  if (it == m_object_session_to_slot.end())
+    return;
+  
+  int slot = it->second;
+  
   auto* obj_node = m_device->get_root_node().find_child(std::string_view("2Dobj"));
   if (!obj_node)
     return;
   
-  std::string session_name = std::to_string(session_id);
-  auto* session_node = obj_node->find_child(session_name);
+  auto* slot_node = obj_node->find_child(std::to_string(slot));
+  if (!slot_node)
+    return;
   
-  if (!session_node)
-  {
-    session_node = obj_node->create_child(session_name);
-    
-    // Create all parameters for this object
-    auto* class_param = session_node->create_child(std::string("class_id"))->create_parameter(ossia::val_type::INT);
-    class_param->set_value(obj.class_id);
-    
-    auto* pos_param = session_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
-    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
-    
-    auto* angle_param = session_node->create_child(std::string("angle"))->create_parameter(ossia::val_type::FLOAT);
-    angle_param->set_domain(ossia::make_domain(0.0f, static_cast<float>(2 * M_PI)));
-    
-    session_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F);
-    session_node->create_child(std::string("angle_velocity"))->create_parameter(ossia::val_type::FLOAT);
-    session_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT);
-    session_node->create_child(std::string("rotation_acceleration"))->create_parameter(ossia::val_type::FLOAT);
-  }
+  // Update session_id and active status
+  if (auto* param = slot_node->find_child(std::string_view("session_id"))->get_parameter())
+    param->set_value(session_id);
+  if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
+    param->set_value(true);
   
-  // Update parameters
-  if (auto* param = session_node->find_child(std::string_view("class_id"))->get_parameter())
+  // Update object parameters
+  if (auto* param = slot_node->find_child(std::string_view("class_id"))->get_parameter())
     param->set_value(obj.class_id);
   
-  if (auto* param = session_node->find_child(std::string_view("position"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("position"))->get_parameter())
     param->set_value(ossia::vec2f{obj.x, obj.y});
   
-  if (auto* param = session_node->find_child(std::string_view("angle"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("angle"))->get_parameter())
     param->set_value(obj.angle);
   
-  if (auto* param = session_node->find_child(std::string_view("velocity"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("velocity"))->get_parameter())
     param->set_value(ossia::vec2f{obj.x_vel, obj.y_vel});
   
-  if (auto* param = session_node->find_child(std::string_view("angle_velocity"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("angle_velocity"))->get_parameter())
     param->set_value(obj.angle_vel);
   
-  if (auto* param = session_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
     param->set_value(obj.motion_accel);
   
-  if (auto* param = session_node->find_child(std::string_view("rotation_acceleration"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("rotation_acceleration"))->get_parameter())
     param->set_value(obj.rotation_accel);
 }
 
@@ -574,33 +719,34 @@ void TUIOProtocol::update_cursor_parameters(int32_t session_id, const TUIOCursor
   if (!m_device)
     return;
   
+  auto it = m_cursor_session_to_slot.find(session_id);
+  if (it == m_cursor_session_to_slot.end())
+    return;
+  
+  int slot = it->second;
+  
   auto* cur_node = m_device->get_root_node().find_child(std::string_view("2Dcur"));
   if (!cur_node)
     return;
   
-  std::string session_name = std::to_string(session_id);
-  auto* session_node = cur_node->find_child(session_name);
+  auto* slot_node = cur_node->find_child(std::to_string(slot));
+  if (!slot_node)
+    return;
   
-  if (!session_node)
-  {
-    session_node = cur_node->create_child(session_name);
-    
-    // Create all parameters for this cursor
-    auto* pos_param = session_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
-    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
-    
-    session_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F);
-    session_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT);
-  }
+  // Update session_id and active status
+  if (auto* param = slot_node->find_child(std::string_view("session_id"))->get_parameter())
+    param->set_value(session_id);
+  if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
+    param->set_value(true);
   
-  // Update parameters
-  if (auto* param = session_node->find_child(std::string_view("position"))->get_parameter())
+  // Update cursor parameters
+  if (auto* param = slot_node->find_child(std::string_view("position"))->get_parameter())
     param->set_value(ossia::vec2f{cur.x, cur.y});
   
-  if (auto* param = session_node->find_child(std::string_view("velocity"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("velocity"))->get_parameter())
     param->set_value(ossia::vec2f{cur.x_vel, cur.y_vel});
   
-  if (auto* param = session_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
     param->set_value(cur.motion_accel);
 }
 
@@ -609,59 +755,49 @@ void TUIOProtocol::update_blob_parameters(int32_t session_id, const TUIOBlob& bl
   if (!m_device)
     return;
   
+  auto it = m_blob_session_to_slot.find(session_id);
+  if (it == m_blob_session_to_slot.end())
+    return;
+  
+  int slot = it->second;
+  
   auto* blob_node = m_device->get_root_node().find_child(std::string_view("2Dblb"));
   if (!blob_node)
     return;
   
-  std::string session_name = std::to_string(session_id);
-  auto* session_node = blob_node->find_child(session_name);
+  auto* slot_node = blob_node->find_child(std::to_string(slot));
+  if (!slot_node)
+    return;
   
-  if (!session_node)
-  {
-    session_node = blob_node->create_child(session_name);
-    
-    // Create all parameters for this blob
-    auto* pos_param = session_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
-    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
-    
-    auto* angle_param = session_node->create_child(std::string("angle"))->create_parameter(ossia::val_type::FLOAT);
-    angle_param->set_domain(ossia::make_domain(0.0f, static_cast<float>(2 * M_PI)));
-    
-    auto* size_param = session_node->create_child(std::string("size"))->create_parameter(ossia::val_type::VEC2F);
-    size_param->set_domain(ossia::make_domain(0.0f, 1.0f));
-    
-    auto* area_param = session_node->create_child(std::string("area"))->create_parameter(ossia::val_type::FLOAT);
-    area_param->set_domain(ossia::make_domain(0.0f, 1.0f));
-    
-    session_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F);
-    session_node->create_child(std::string("angle_velocity"))->create_parameter(ossia::val_type::FLOAT);
-    session_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT);
-    session_node->create_child(std::string("rotation_acceleration"))->create_parameter(ossia::val_type::FLOAT);
-  }
+  // Update session_id and active status
+  if (auto* param = slot_node->find_child(std::string_view("session_id"))->get_parameter())
+    param->set_value(session_id);
+  if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
+    param->set_value(true);
   
-  // Update parameters
-  if (auto* param = session_node->find_child(std::string_view("position"))->get_parameter())
+  // Update blob parameters
+  if (auto* param = slot_node->find_child(std::string_view("position"))->get_parameter())
     param->set_value(ossia::vec2f{blob.x, blob.y});
   
-  if (auto* param = session_node->find_child(std::string_view("angle"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("angle"))->get_parameter())
     param->set_value(blob.angle);
   
-  if (auto* param = session_node->find_child(std::string_view("size"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("size"))->get_parameter())
     param->set_value(ossia::vec2f{blob.width, blob.height});
   
-  if (auto* param = session_node->find_child(std::string_view("area"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("area"))->get_parameter())
     param->set_value(blob.area);
   
-  if (auto* param = session_node->find_child(std::string_view("velocity"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("velocity"))->get_parameter())
     param->set_value(ossia::vec2f{blob.x_vel, blob.y_vel});
   
-  if (auto* param = session_node->find_child(std::string_view("angle_velocity"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("angle_velocity"))->get_parameter())
     param->set_value(blob.angle_vel);
   
-  if (auto* param = session_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
     param->set_value(blob.motion_accel);
   
-  if (auto* param = session_node->find_child(std::string_view("rotation_acceleration"))->get_parameter())
+  if (auto* param = slot_node->find_child(std::string_view("rotation_acceleration"))->get_parameter())
     param->set_value(blob.rotation_accel);
 }
 
@@ -677,70 +813,104 @@ void TUIOProtocol::remove_dead_sessions(const std::vector<int32_t>& alive_ids, c
   // Build set of alive IDs for fast lookup
   std::unordered_set<int32_t> alive_set(alive_ids.begin(), alive_ids.end());
   
-  // Remove dead sessions based on profile
+  // Mark slots as inactive for dead sessions
   if (profile == "2Dobj")
   {
-    for (auto it = m_objects.begin(); it != m_objects.end();)
+    // First mark all slots as inactive
+    for (auto& slot : m_object_slots)
     {
-      if (alive_set.find(it->first) == alive_set.end())
+      slot.active = false;
+    }
+    
+    // Then mark alive sessions as active
+    for (int32_t id : alive_ids)
+    {
+      auto it = m_object_session_to_slot.find(id);
+      if (it != m_object_session_to_slot.end())
       {
-        // Remove from device tree
-        std::string session_name = std::to_string(it->first);
-        if (auto* session_node = profile_node->find_child(session_name))
+        m_object_slots[it->second].active = true;
+      }
+    }
+    
+    // Update device tree for inactive slots
+    for (size_t i = 0; i < m_object_slots.size(); ++i)
+    {
+      if (!m_object_slots[i].active && m_object_slots[i].session_id != -1)
+      {
+        auto* slot_node = profile_node->find_child(std::to_string(i));
+        if (slot_node)
         {
-          profile_node->remove_child(*session_node);
+          if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
+            param->set_value(false);
         }
         
-        // Remove from internal storage
-        it = m_objects.erase(it);
-      }
-      else
-      {
-        ++it;
+        // Free the slot
+        m_object_session_to_slot.erase(m_object_slots[i].session_id);
+        m_object_slots[i].session_id = -1;
       }
     }
   }
   else if (profile == "2Dcur")
   {
-    for (auto it = m_cursors.begin(); it != m_cursors.end();)
+    for (auto& slot : m_cursor_slots)
     {
-      if (alive_set.find(it->first) == alive_set.end())
+      slot.active = false;
+    }
+    
+    for (int32_t id : alive_ids)
+    {
+      auto it = m_cursor_session_to_slot.find(id);
+      if (it != m_cursor_session_to_slot.end())
       {
-        // Remove from device tree
-        std::string session_name = std::to_string(it->first);
-        if (auto* session_node = profile_node->find_child(session_name))
+        m_cursor_slots[it->second].active = true;
+      }
+    }
+    
+    for (size_t i = 0; i < m_cursor_slots.size(); ++i)
+    {
+      if (!m_cursor_slots[i].active && m_cursor_slots[i].session_id != -1)
+      {
+        auto* slot_node = profile_node->find_child(std::to_string(i));
+        if (slot_node)
         {
-          profile_node->remove_child(*session_node);
+          if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
+            param->set_value(false);
         }
         
-        // Remove from internal storage
-        it = m_cursors.erase(it);
-      }
-      else
-      {
-        ++it;
+        m_cursor_session_to_slot.erase(m_cursor_slots[i].session_id);
+        m_cursor_slots[i].session_id = -1;
       }
     }
   }
   else if (profile == "2Dblb")
   {
-    for (auto it = m_blobs.begin(); it != m_blobs.end();)
+    for (auto& slot : m_blob_slots)
     {
-      if (alive_set.find(it->first) == alive_set.end())
+      slot.active = false;
+    }
+    
+    for (int32_t id : alive_ids)
+    {
+      auto it = m_blob_session_to_slot.find(id);
+      if (it != m_blob_session_to_slot.end())
       {
-        // Remove from device tree
-        std::string session_name = std::to_string(it->first);
-        if (auto* session_node = profile_node->find_child(session_name))
+        m_blob_slots[it->second].active = true;
+      }
+    }
+    
+    for (size_t i = 0; i < m_blob_slots.size(); ++i)
+    {
+      if (!m_blob_slots[i].active && m_blob_slots[i].session_id != -1)
+      {
+        auto* slot_node = profile_node->find_child(std::to_string(i));
+        if (slot_node)
         {
-          profile_node->remove_child(*session_node);
+          if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
+            param->set_value(false);
         }
         
-        // Remove from internal storage
-        it = m_blobs.erase(it);
-      }
-      else
-      {
-        ++it;
+        m_blob_session_to_slot.erase(m_blob_slots[i].session_id);
+        m_blob_slots[i].session_id = -1;
       }
     }
   }

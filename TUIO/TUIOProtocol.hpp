@@ -56,7 +56,10 @@ class TUIOProtocol final : public ossia::net::protocol_base
 public:
   explicit TUIOProtocol(
       const ossia::net::network_context_ptr& ctx,
-      uint16_t port = 3333);
+      uint16_t port = 3333,
+      int numObjects = 8,
+      int numCursors = 8,
+      int numBlobs = 8);
   
   ~TUIOProtocol();
 
@@ -94,14 +97,39 @@ private:
   std::unique_ptr<ossia::net::udp_receive_socket> m_receive_socket;
   ossia::net::device_base* m_device{nullptr};
   
-  ossia::hash_map<int32_t, TUIOObject> m_objects;
-  ossia::hash_map<int32_t, TUIOCursor> m_cursors;
-  ossia::hash_map<int32_t, TUIOBlob> m_blobs;
+  // Fixed slots for each profile type
+  struct SlotMapping {
+    int32_t session_id{-1};  // -1 means slot is free
+    bool active{false};
+  };
+  
+  std::vector<SlotMapping> m_object_slots;
+  std::vector<SlotMapping> m_cursor_slots;
+  std::vector<SlotMapping> m_blob_slots;
+  
+  // Map from session_id to slot index
+  ossia::hash_map<int32_t, int> m_object_session_to_slot;
+  ossia::hash_map<int32_t, int> m_cursor_session_to_slot;
+  ossia::hash_map<int32_t, int> m_blob_session_to_slot;
+  
+  // Store actual data per slot
+  std::vector<TUIOObject> m_objects;
+  std::vector<TUIOCursor> m_cursors;
+  std::vector<TUIOBlob> m_blobs;
   
   int32_t m_frame_id{-1};
   std::string m_source;
   
   uint16_t m_port;
+  int m_num_objects;
+  int m_num_cursors;
+  int m_num_blobs;
+  
+  // Helper methods for slot management
+  int find_or_allocate_slot(int32_t session_id, std::vector<SlotMapping>& slots, 
+                            ossia::hash_map<int32_t, int>& session_map);
+  void free_slot(int32_t session_id, std::vector<SlotMapping>& slots,
+                 ossia::hash_map<int32_t, int>& session_map);
 };
 
 }

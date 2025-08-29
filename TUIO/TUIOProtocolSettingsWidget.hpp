@@ -18,5 +18,8 @@ public:
 private:
   QLineEdit* m_deviceNameEdit{};
   QSpinBox* m_portEdit{};
+  QSpinBox* m_numObjectsEdit{};
+  QSpinBox* m_numCursorsEdit{};
+  QSpinBox* m_numBlobsEdit{};
 };
 }

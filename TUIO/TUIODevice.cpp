@@ -39,7 +39,12 @@ bool TUIODevice::reconnect()
     const auto& stgs = settings();
     const auto& tuio_settings = stgs.deviceSpecificSettings.value<TUIOSpecificSettings>();
     
-    auto protocol = std::make_unique<TUIOProtocol>(m_ctx, tuio_settings.port);
+    auto protocol = std::make_unique<TUIOProtocol>(
+        m_ctx, 
+        tuio_settings.port,
+        tuio_settings.numObjects,
+        tuio_settings.numCursors,
+        tuio_settings.numBlobs);
     auto dev = std::make_unique<ossia::net::generic_device>(
         std::move(protocol), stgs.name.toStdString());
     
