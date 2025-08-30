@@ -44,7 +44,8 @@ bool TUIODevice::reconnect()
         tuio_settings.port,
         tuio_settings.numObjects,
         tuio_settings.numCursors,
-        tuio_settings.numBlobs);
+        tuio_settings.numBlobs,
+        tuio_settings.version);
     auto dev = std::make_unique<ossia::net::generic_device>(
         std::move(protocol), stgs.name.toStdString());
     

@@ -6,6 +6,7 @@ set(HDRS
   
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIODevice.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIOProtocol.hpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIO2Types.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIOProtocolFactory.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIOProtocolSettingsWidget.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIOSpecificSettings.hpp"
@@ -16,6 +17,7 @@ set(SRCS
   
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIODevice.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIOProtocol.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIO2Handlers.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIOProtocolFactory.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIOProtocolSettingsWidget.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/TUIO/TUIOSpecificSettingsSerialization.cpp"

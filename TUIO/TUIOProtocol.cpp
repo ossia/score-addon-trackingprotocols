@@ -17,22 +17,35 @@ TUIOProtocol::TUIOProtocol(
     uint16_t port,
     int numObjects,
     int numCursors,
-    int numBlobs)
+    int numBlobs,
+    TUIOVersion version)
     : ossia::net::protocol_base{}
     , m_ctx{ctx}
     , m_port{port}
     , m_num_objects{numObjects}
     , m_num_cursors{numCursors}
     , m_num_blobs{numBlobs}
+    , m_version{version}
 {
   // Initialize slot arrays
   m_object_slots.resize(numObjects);
   m_cursor_slots.resize(numCursors);
   m_blob_slots.resize(numBlobs);
   
-  m_objects.resize(numObjects);
-  m_cursors.resize(numCursors);
-  m_blobs.resize(numBlobs);
+  if (m_version == TUIOVersion::V1_1)
+  {
+    m_objects.resize(numObjects);
+    m_cursors.resize(numCursors);
+    m_blobs.resize(numBlobs);
+  }
+  else // TUIO 2.0
+  {
+    m_tuio2_tokens.resize(numObjects);
+    m_tuio2_pointers.resize(numCursors);
+    m_tuio2_bounds.resize(numBlobs);
+    m_tuio2_symbols.resize(numObjects);
+    m_tuio2_controls.resize(numObjects);
+  }
 }
 
 TUIOProtocol::~TUIOProtocol()
@@ -57,6 +70,20 @@ void TUIOProtocol::set_device(ossia::net::device_base& dev)
   auto frame_param = frame_node->create_parameter(ossia::val_type::INT);
   frame_param->set_value(0);
   
+  if (m_version == TUIOVersion::V1_1)
+  {
+    create_tuio1_tree(root);
+  }
+  else
+  {
+    create_tuio2_tree(root);
+  }
+  
+  setup_receive_socket();
+}
+
+void TUIOProtocol::create_tuio1_tree(ossia::net::node_base& root)
+{
   // Create profile nodes with fixed slots
   auto* obj_node = root.create_child(std::string("2Dobj"));
   for (int i = 0; i < m_num_objects; ++i)
@@ -129,8 +156,109 @@ void TUIOProtocol::set_device(ossia::net::device_base& dev)
     slot_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
     slot_node->create_child(std::string("rotation_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
   }
+}
+
+void TUIOProtocol::create_tuio2_tree(ossia::net::node_base& root)
+{
+  // TUIO 2.0 uses /tuio2/tok, /tuio2/ptr, /tuio2/bnd namespaces
+  // Create token nodes
+  auto* tok_node = root.create_child(std::string("tok"));
+  for (int i = 0; i < m_num_objects; ++i)
+  {
+    auto* slot_node = tok_node->create_child(std::to_string(i));
+    
+    slot_node->create_child(std::string("session_id"))->create_parameter(ossia::val_type::INT)->set_value(-1);
+    slot_node->create_child(std::string("active"))->create_parameter(ossia::val_type::BOOL)->set_value(false);
+    slot_node->create_child(std::string("user_id"))->create_parameter(ossia::val_type::INT)->set_value(0);
+    slot_node->create_child(std::string("type_id"))->create_parameter(ossia::val_type::INT)->set_value(0);
+    slot_node->create_child(std::string("component_id"))->create_parameter(ossia::val_type::INT)->set_value(0);
+    
+    auto* pos_param = slot_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
+    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    pos_param->set_value(ossia::vec2f{0.5f, 0.5f});
+    
+    auto* angle_param = slot_node->create_child(std::string("angle"))->create_parameter(ossia::val_type::FLOAT);
+    angle_param->set_domain(ossia::make_domain(0.0f, static_cast<float>(2 * M_PI)));
+    angle_param->set_value(0.0f);
+    
+    slot_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F)->set_value(ossia::vec2f{});
+    slot_node->create_child(std::string("angle_velocity"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("rotation_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    
+    // Symbol data (optional)
+    slot_node->create_child(std::string("symbol_group"))->create_parameter(ossia::val_type::STRING)->set_value("");
+    slot_node->create_child(std::string("symbol_data"))->create_parameter(ossia::val_type::STRING)->set_value("");
+  }
   
-  setup_receive_socket();
+  // Create pointer nodes
+  auto* ptr_node = root.create_child(std::string("ptr"));
+  for (int i = 0; i < m_num_cursors; ++i)
+  {
+    auto* slot_node = ptr_node->create_child(std::to_string(i));
+    
+    slot_node->create_child(std::string("session_id"))->create_parameter(ossia::val_type::INT)->set_value(-1);
+    slot_node->create_child(std::string("active"))->create_parameter(ossia::val_type::BOOL)->set_value(false);
+    slot_node->create_child(std::string("user_id"))->create_parameter(ossia::val_type::INT)->set_value(0);
+    slot_node->create_child(std::string("type_id"))->create_parameter(ossia::val_type::INT)->set_value(1); // Default: right index finger
+    slot_node->create_child(std::string("component_id"))->create_parameter(ossia::val_type::INT)->set_value(0);
+    
+    auto* pos_param = slot_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
+    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    pos_param->set_value(ossia::vec2f{0.5f, 0.5f});
+    
+    auto* angle_param = slot_node->create_child(std::string("angle"))->create_parameter(ossia::val_type::FLOAT);
+    angle_param->set_domain(ossia::make_domain(0.0f, static_cast<float>(2 * M_PI)));
+    angle_param->set_value(0.0f);
+    
+    auto* shear_param = slot_node->create_child(std::string("shear"))->create_parameter(ossia::val_type::FLOAT);
+    shear_param->set_domain(ossia::make_domain(0.0f, static_cast<float>(M_PI/2)));
+    shear_param->set_value(0.0f);
+    
+    auto* radius_param = slot_node->create_child(std::string("radius"))->create_parameter(ossia::val_type::FLOAT);
+    radius_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    radius_param->set_value(0.0f);
+    
+    auto* pressure_param = slot_node->create_child(std::string("pressure"))->create_parameter(ossia::val_type::FLOAT);
+    pressure_param->set_domain(ossia::make_domain(-1.0f, 1.0f)); // -1 = hovering
+    pressure_param->set_value(1.0f);
+    
+    slot_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F)->set_value(ossia::vec2f{});
+    slot_node->create_child(std::string("pressure_velocity"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("pressure_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+  }
+  
+  // Create bounds nodes
+  auto* bnd_node = root.create_child(std::string("bnd"));
+  for (int i = 0; i < m_num_blobs; ++i)
+  {
+    auto* slot_node = bnd_node->create_child(std::to_string(i));
+    
+    slot_node->create_child(std::string("session_id"))->create_parameter(ossia::val_type::INT)->set_value(-1);
+    slot_node->create_child(std::string("active"))->create_parameter(ossia::val_type::BOOL)->set_value(false);
+    
+    auto* pos_param = slot_node->create_child(std::string("position"))->create_parameter(ossia::val_type::VEC2F);
+    pos_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    pos_param->set_value(ossia::vec2f{0.5f, 0.5f});
+    
+    auto* angle_param = slot_node->create_child(std::string("angle"))->create_parameter(ossia::val_type::FLOAT);
+    angle_param->set_domain(ossia::make_domain(0.0f, static_cast<float>(2 * M_PI)));
+    angle_param->set_value(0.0f);
+    
+    auto* size_param = slot_node->create_child(std::string("size"))->create_parameter(ossia::val_type::VEC2F);
+    size_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    size_param->set_value(ossia::vec2f{0.1f, 0.1f});
+    
+    auto* area_param = slot_node->create_child(std::string("area"))->create_parameter(ossia::val_type::FLOAT);
+    area_param->set_domain(ossia::make_domain(0.0f, 1.0f));
+    area_param->set_value(0.01f);
+    
+    slot_node->create_child(std::string("velocity"))->create_parameter(ossia::val_type::VEC2F)->set_value(ossia::vec2f{});
+    slot_node->create_child(std::string("angle_velocity"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("motion_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+    slot_node->create_child(std::string("rotation_acceleration"))->create_parameter(ossia::val_type::FLOAT)->set_value(0.0f);
+  }
 }
 
 int TUIOProtocol::find_or_allocate_slot(int32_t session_id, std::vector<SlotMapping>& slots, 
@@ -236,17 +364,53 @@ void TUIOProtocol::on_received_message(const oscpack::ReceivedMessage& msg)
 {
   std::string addr = msg.AddressPattern();
   
-  if (addr == "/tuio/2Dobj")
+  if (m_version == TUIOVersion::V1_1)
   {
-    handle_2Dobj_message(msg);
+    // TUIO 1.1 messages
+    if (addr == "/tuio/2Dobj")
+    {
+      handle_2Dobj_message(msg);
+    }
+    else if (addr == "/tuio/2Dcur")
+    {
+      handle_2Dcur_message(msg);
+    }
+    else if (addr == "/tuio/2Dblb")
+    {
+      handle_2Dblb_message(msg);
+    }
   }
-  else if (addr == "/tuio/2Dcur")
+  else // TUIO 2.0
   {
-    handle_2Dcur_message(msg);
-  }
-  else if (addr == "/tuio/2Dblb")
-  {
-    handle_2Dblb_message(msg);
+    // TUIO 2.0 messages
+    if (addr == "/tuio2/frm")
+    {
+      handle_tuio2_frm(msg);
+    }
+    else if (addr == "/tuio2/tok")
+    {
+      handle_tuio2_tok(msg);
+    }
+    else if (addr == "/tuio2/ptr")
+    {
+      handle_tuio2_ptr(msg);
+    }
+    else if (addr == "/tuio2/bnd")
+    {
+      handle_tuio2_bnd(msg);
+    }
+    else if (addr == "/tuio2/sym")
+    {
+      handle_tuio2_sym(msg);
+    }
+    else if (addr == "/tuio2/ctl")
+    {
+      handle_tuio2_ctl(msg);
+    }
+    else if (addr == "/tuio2/alv")
+    {
+      handle_tuio2_alv(msg);
+    }
   }
 }
 

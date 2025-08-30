@@ -4,6 +4,7 @@
 
 class QLineEdit;
 class QSpinBox;
+class QComboBox;
 
 namespace TUIO
 {
@@ -21,5 +22,6 @@ private:
   QSpinBox* m_numObjectsEdit{};
   QSpinBox* m_numCursorsEdit{};
   QSpinBox* m_numBlobsEdit{};
+  QComboBox* m_versionCombo{};
 };
 }

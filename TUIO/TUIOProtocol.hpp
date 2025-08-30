@@ -1,5 +1,7 @@
 #pragma once
 
+#include "TUIO2Types.hpp"
+#include "TUIOSpecificSettings.hpp"
 #include <ossia/detail/hash_map.hpp>
 #include <ossia/detail/logger.hpp>
 #include <ossia/network/base/protocol.hpp>
@@ -59,7 +61,8 @@ public:
       uint16_t port = 3333,
       int numObjects = 8,
       int numCursors = 8,
-      int numBlobs = 8);
+      int numBlobs = 8,
+      TUIOVersion version = TUIOVersion::V1_1);
   
   ~TUIOProtocol();
 
@@ -76,16 +79,32 @@ private:
   void stop_receive();
   void on_received_message(const oscpack::ReceivedMessage& msg);
   
+  // TUIO 1.1 handlers
   void handle_2Dobj_message(const oscpack::ReceivedMessage& msg);
   void handle_2Dcur_message(const oscpack::ReceivedMessage& msg);
   void handle_2Dblb_message(const oscpack::ReceivedMessage& msg);
   
+  // TUIO 2.0 handlers
+  void handle_tuio2_frm(const oscpack::ReceivedMessage& msg);
+  void handle_tuio2_tok(const oscpack::ReceivedMessage& msg);
+  void handle_tuio2_ptr(const oscpack::ReceivedMessage& msg);
+  void handle_tuio2_bnd(const oscpack::ReceivedMessage& msg);
+  void handle_tuio2_sym(const oscpack::ReceivedMessage& msg);
+  void handle_tuio2_alv(const oscpack::ReceivedMessage& msg);
+  void handle_tuio2_ctl(const oscpack::ReceivedMessage& msg);
+  
+  // TUIO 1.1 processors
   void process_2Dobj_set(const oscpack::ReceivedMessage& msg);
   void process_2Dobj_alive(const oscpack::ReceivedMessage& msg);
   void process_2Dcur_set(const oscpack::ReceivedMessage& msg);
   void process_2Dcur_alive(const oscpack::ReceivedMessage& msg);
   void process_2Dblb_set(const oscpack::ReceivedMessage& msg);
   void process_2Dblb_alive(const oscpack::ReceivedMessage& msg);
+  
+  // TUIO 2.0 update methods
+  void update_tuio2_token(int slot, const TUIO2Token& tok);
+  void update_tuio2_pointer(int slot, const TUIO2Pointer& ptr);
+  void update_tuio2_bounds(int slot, const TUIO2Bounds& bnd);
   
   void update_object_parameters(int32_t session_id, const TUIOObject& obj);
   void update_cursor_parameters(int32_t session_id, const TUIOCursor& cur);
@@ -112,10 +131,17 @@ private:
   ossia::hash_map<int32_t, int> m_cursor_session_to_slot;
   ossia::hash_map<int32_t, int> m_blob_session_to_slot;
   
-  // Store actual data per slot
+  // Store actual data per slot (TUIO 1.1)
   std::vector<TUIOObject> m_objects;
   std::vector<TUIOCursor> m_cursors;
   std::vector<TUIOBlob> m_blobs;
+  
+  // TUIO 2.0 data per slot
+  std::vector<TUIO2Token> m_tuio2_tokens;
+  std::vector<TUIO2Pointer> m_tuio2_pointers;
+  std::vector<TUIO2Bounds> m_tuio2_bounds;
+  std::vector<TUIO2Symbol> m_tuio2_symbols;
+  std::vector<TUIO2Control> m_tuio2_controls;
   
   int32_t m_frame_id{-1};
   std::string m_source;
@@ -124,12 +150,24 @@ private:
   int m_num_objects;
   int m_num_cursors;
   int m_num_blobs;
+  TUIOVersion m_version;
+  
+  // TUIO 2.0 frame info
+  uint32_t m_tuio2_frame_id{0};
+  std::chrono::steady_clock::time_point m_tuio2_frame_time;
+  uint16_t m_tuio2_dim_width{640};
+  uint16_t m_tuio2_dim_height{480};
+  std::string m_tuio2_source;
   
   // Helper methods for slot management
   int find_or_allocate_slot(int32_t session_id, std::vector<SlotMapping>& slots, 
                             ossia::hash_map<int32_t, int>& session_map);
   void free_slot(int32_t session_id, std::vector<SlotMapping>& slots,
                  ossia::hash_map<int32_t, int>& session_map);
+  
+  // Tree creation methods
+  void create_tuio1_tree(ossia::net::node_base& root);
+  void create_tuio2_tree(ossia::net::node_base& root);
 };
 
 }

@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QComboBox>
 #include <QVariant>
 
 namespace TUIO
@@ -33,25 +34,35 @@ TUIOProtocolSettingsWidget::TUIOProtocolSettingsWidget(QWidget* parent)
   m_numBlobsEdit->setRange(1, 64);
   m_numBlobsEdit->setValue(8);
   
+  m_versionCombo = new QComboBox(this);
+  m_versionCombo->addItem("TUIO 1.1");
+  m_versionCombo->addItem("TUIO 2.0");
+  m_versionCombo->setCurrentIndex(0);
+  
   auto layout = new QFormLayout;
   layout->addRow(tr("Device name"), m_deviceNameEdit);
   layout->addRow(tr("UDP Port"), m_portEdit);
   layout->addRow(tr("Number of Objects"), m_numObjectsEdit);
   layout->addRow(tr("Number of Cursors"), m_numCursorsEdit);
   layout->addRow(tr("Number of Blobs"), m_numBlobsEdit);
+  layout->addRow(tr("Protocol Version"), m_versionCombo);
   
   auto info = new QLabel(tr(
-      "TUIO 1.1 Protocol\n"
+      "TUIO Protocol\n"
       "Receives TUIO messages on the specified UDP port.\n"
       "Default port: 3333\n\n"
       "Slot configuration:\n"
       "Set the number of fixed slots for each profile type.\n"
       "Incoming TUIO session IDs will be mapped to these slots\n"
       "in a round-robin fashion.\n\n"
-      "Supported profiles:\n"
+      "TUIO 1.1 profiles:\n"
       "- 2Dobj: Tangible objects with position and rotation\n"
       "- 2Dcur: Touch cursors with position\n"
-      "- 2Dblb: Blob regions with position, size and rotation"));
+      "- 2Dblb: Blob regions with position, size and rotation\n\n"
+      "TUIO 2.0 profiles:\n"
+      "- tok: Tokens (tagged objects) with extended attributes\n"
+      "- ptr: Pointers with pressure and shear\n"
+      "- bnd: Bounds with detailed geometry"));
   info->setWordWrap(true);
   layout->addRow(info);
   
@@ -69,6 +80,7 @@ Device::DeviceSettings TUIOProtocolSettingsWidget::getSettings() const
   spec.numObjects = m_numObjectsEdit->value();
   spec.numCursors = m_numCursorsEdit->value();
   spec.numBlobs = m_numBlobsEdit->value();
+  spec.version = m_versionCombo->currentIndex() == 0 ? TUIOVersion::V1_1 : TUIOVersion::V2_0;
   
   s.deviceSpecificSettings = QVariant::fromValue(spec);
   return s;
@@ -85,6 +97,7 @@ void TUIOProtocolSettingsWidget::setSettings(const Device::DeviceSettings& setti
     m_numObjectsEdit->setValue(spec.numObjects);
     m_numCursorsEdit->setValue(spec.numCursors);
     m_numBlobsEdit->setValue(spec.numBlobs);
+    m_versionCombo->setCurrentIndex(spec.version == TUIOVersion::V1_1 ? 0 : 1);
   }
 }
 
