@@ -1,0 +1,6 @@
+[submodule "3rdparty/psn-cpp"]
+	path = 3rdparty/psn-cpp
+	url = https://github.com/vyv/psn-cpp.git
+[submodule "3rdparty/RTTrP"]
+	path = 3rdparty/RTTrP
+	url = https://github.com/RTTrP/RTTrP-v2.4.2.0.git

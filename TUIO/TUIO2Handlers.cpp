@@ -1,11 +1,10 @@
 #include "TUIOProtocol.hpp"
 #include "TUIO2Types.hpp"
+#include "../Common/TrackingTreeBuilder.hpp"
 
 #include <ossia/network/base/device.hpp>
 #include <ossia/network/base/node.hpp>
 #include <ossia/network/base/parameter.hpp>
-
-#include <fmt/format.h>
 
 namespace TUIO
 {
@@ -15,34 +14,27 @@ void TUIOProtocol::handle_tuio2_frm(const oscpack::ReceivedMessage& msg)
   try
   {
     auto args = msg.ArgumentsBegin();
-    
+
     // Parse: f_id time dim source
     m_tuio2_frame_id = (args++)->AsInt32();
-    
+
     // Skip time tag for now (complex to parse)
     args++;
-    
+
     // Parse dimension (width and height encoded in single int32)
     uint32_t dim = (args++)->AsInt32();
     m_tuio2_dim_width = (dim >> 16) & 0xFFFF;
     m_tuio2_dim_height = dim & 0xFFFF;
-    
+
     m_tuio2_source = (args++)->AsString();
-    
+
     // Update source and frame parameters
     if (m_device)
     {
+      using TB = Tracking::TreeBuilder;
       auto& root = m_device->get_root_node();
-      if (auto* source_node = root.find_child(std::string_view("source")))
-      {
-        if (auto* param = source_node->get_parameter())
-          param->set_value(m_tuio2_source);
-      }
-      if (auto* frame_node = root.find_child(std::string_view("frame")))
-      {
-        if (auto* param = frame_node->get_parameter())
-          param->set_value((int)m_tuio2_frame_id);
-      }
+      TB::update_param(&root, "source", m_tuio2_source);
+      TB::update_param(&root, "frame", (int)m_tuio2_frame_id);
     }
   }
   catch (const std::exception& e)
@@ -56,7 +48,7 @@ void TUIOProtocol::handle_tuio2_tok(const oscpack::ReceivedMessage& msg)
   try
   {
     auto args = msg.ArgumentsBegin();
-    
+
     // Parse: s_id tu_id c_id x_pos y_pos angle [x_vel y_vel a_vel m_acc r_acc]
     uint32_t session_id = (args++)->AsInt32();
     uint32_t tu_id = (args++)->AsInt32();
@@ -64,10 +56,10 @@ void TUIOProtocol::handle_tuio2_tok(const oscpack::ReceivedMessage& msg)
     float x = (args++)->AsFloat();
     float y = (args++)->AsFloat();
     float angle = (args++)->AsFloat();
-    
+
     // Find or allocate slot
-    int slot = find_or_allocate_slot(session_id, m_object_slots, m_object_session_to_slot);
-    
+    int slot = m_object_slots.find_or_allocate(session_id);
+
     // Update data
     auto& tok = m_tuio2_tokens[slot];
     tok.session_id = session_id;
@@ -77,7 +69,7 @@ void TUIOProtocol::handle_tuio2_tok(const oscpack::ReceivedMessage& msg)
     tok.x = x;
     tok.y = y;
     tok.angle = angle;
-    
+
     // Parse optional velocity/acceleration
     if (args != msg.ArgumentsEnd())
     {
@@ -87,9 +79,10 @@ void TUIOProtocol::handle_tuio2_tok(const oscpack::ReceivedMessage& msg)
       tok.m_acc = (args++)->AsFloat();
       tok.r_acc = (args++)->AsFloat();
     }
-    
+
     tok.last_update = std::chrono::steady_clock::now();
-    
+    m_object_slots.mark_active(slot);
+
     // Update parameters
     update_tuio2_token(slot, tok);
   }
@@ -104,7 +97,7 @@ void TUIOProtocol::handle_tuio2_ptr(const oscpack::ReceivedMessage& msg)
   try
   {
     auto args = msg.ArgumentsBegin();
-    
+
     // Parse: s_id tu_id c_id x_pos y_pos angle shear radius press [x_vel y_vel p_vel m_acc p_acc]
     uint32_t session_id = (args++)->AsInt32();
     uint32_t tu_id = (args++)->AsInt32();
@@ -115,10 +108,10 @@ void TUIOProtocol::handle_tuio2_ptr(const oscpack::ReceivedMessage& msg)
     float shear = (args++)->AsFloat();
     float radius = (args++)->AsFloat();
     float pressure = (args++)->AsFloat();
-    
+
     // Find or allocate slot
-    int slot = find_or_allocate_slot(session_id, m_cursor_slots, m_cursor_session_to_slot);
-    
+    int slot = m_cursor_slots.find_or_allocate(session_id);
+
     // Update data
     auto& ptr = m_tuio2_pointers[slot];
     ptr.session_id = session_id;
@@ -131,7 +124,7 @@ void TUIOProtocol::handle_tuio2_ptr(const oscpack::ReceivedMessage& msg)
     ptr.shear = shear;
     ptr.radius = radius;
     ptr.pressure = pressure;
-    
+
     // Parse optional velocity/acceleration
     if (args != msg.ArgumentsEnd())
     {
@@ -141,9 +134,10 @@ void TUIOProtocol::handle_tuio2_ptr(const oscpack::ReceivedMessage& msg)
       ptr.m_acc = (args++)->AsFloat();
       ptr.p_acc = (args++)->AsFloat();
     }
-    
+
     ptr.last_update = std::chrono::steady_clock::now();
-    
+    m_cursor_slots.mark_active(slot);
+
     // Update parameters
     update_tuio2_pointer(slot, ptr);
   }
@@ -158,7 +152,7 @@ void TUIOProtocol::handle_tuio2_bnd(const oscpack::ReceivedMessage& msg)
   try
   {
     auto args = msg.ArgumentsBegin();
-    
+
     // Parse: s_id x_pos y_pos angle width height area [x_vel y_vel a_vel m_acc r_acc]
     uint32_t session_id = (args++)->AsInt32();
     float x = (args++)->AsFloat();
@@ -167,10 +161,10 @@ void TUIOProtocol::handle_tuio2_bnd(const oscpack::ReceivedMessage& msg)
     float width = (args++)->AsFloat();
     float height = (args++)->AsFloat();
     float area = (args++)->AsFloat();
-    
+
     // Find or allocate slot
-    int slot = find_or_allocate_slot(session_id, m_blob_slots, m_blob_session_to_slot);
-    
+    int slot = m_blob_slots.find_or_allocate(session_id);
+
     // Update data
     auto& bnd = m_tuio2_bounds[slot];
     bnd.session_id = session_id;
@@ -180,7 +174,7 @@ void TUIOProtocol::handle_tuio2_bnd(const oscpack::ReceivedMessage& msg)
     bnd.width = width;
     bnd.height = height;
     bnd.area = area;
-    
+
     // Parse optional velocity/acceleration
     if (args != msg.ArgumentsEnd())
     {
@@ -190,9 +184,10 @@ void TUIOProtocol::handle_tuio2_bnd(const oscpack::ReceivedMessage& msg)
       bnd.m_acc = (args++)->AsFloat();
       bnd.r_acc = (args++)->AsFloat();
     }
-    
+
     bnd.last_update = std::chrono::steady_clock::now();
-    
+    m_blob_slots.mark_active(slot);
+
     // Update parameters
     update_tuio2_bounds(slot, bnd);
   }
@@ -207,19 +202,18 @@ void TUIOProtocol::handle_tuio2_sym(const oscpack::ReceivedMessage& msg)
   try
   {
     auto args = msg.ArgumentsBegin();
-    
+
     // Parse: s_id tu_id c_id group data
     uint32_t session_id = (args++)->AsInt32();
     uint32_t tu_id = (args++)->AsInt32();
     uint32_t component_id = (args++)->AsInt32();
     std::string group = (args++)->AsString();
     std::string data = (args++)->AsString();
-    
+
     // Find the slot for this session
-    auto it = m_object_session_to_slot.find(session_id);
-    if (it != m_object_session_to_slot.end())
+    int slot = m_object_slots.find_by_id(session_id);
+    if (slot >= 0)
     {
-      int slot = it->second;
       auto& sym = m_tuio2_symbols[slot];
       sym.session_id = session_id;
       sym.user_id = (tu_id >> 16) & 0xFFFF;
@@ -227,7 +221,7 @@ void TUIOProtocol::handle_tuio2_sym(const oscpack::ReceivedMessage& msg)
       sym.component_id = component_id;
       sym.group = group;
       sym.data = data;
-      
+
       // Update symbol parameters
       if (m_device)
       {
@@ -236,10 +230,9 @@ void TUIOProtocol::handle_tuio2_sym(const oscpack::ReceivedMessage& msg)
         {
           if (auto* slot_node = tok_node->find_child(std::to_string(slot)))
           {
-            if (auto* param = slot_node->find_child(std::string_view("symbol_group"))->get_parameter())
-              param->set_value(group);
-            if (auto* param = slot_node->find_child(std::string_view("symbol_data"))->get_parameter())
-              param->set_value(data);
+            using TB = Tracking::TreeBuilder;
+            TB::update_param(slot_node, "symbol_group", group);
+            TB::update_param(slot_node, "symbol_data", data);
           }
         }
       }
@@ -256,19 +249,18 @@ void TUIOProtocol::handle_tuio2_ctl(const oscpack::ReceivedMessage& msg)
   try
   {
     auto args = msg.ArgumentsBegin();
-    
+
     // Parse: s_id c0 ... cN
     uint32_t session_id = (args++)->AsInt32();
-    
-    // Find the slot for this session (could be in any profile)
-    auto it = m_object_session_to_slot.find(session_id);
-    if (it != m_object_session_to_slot.end())
+
+    // Find the slot for this session
+    int slot = m_object_slots.find_by_id(session_id);
+    if (slot >= 0)
     {
-      int slot = it->second;
       auto& ctl = m_tuio2_controls[slot];
       ctl.session_id = session_id;
       ctl.values.clear();
-      
+
       // Parse all control values
       while (args != msg.ArgumentsEnd())
       {
@@ -280,8 +272,6 @@ void TUIOProtocol::handle_tuio2_ctl(const oscpack::ReceivedMessage& msg)
           ctl.values.push_back((float)args->AsInt32());
         args++;
       }
-      
-      // Could update control parameters here if needed
     }
   }
   catch (const std::exception& e)
@@ -294,113 +284,66 @@ void TUIOProtocol::handle_tuio2_alv(const oscpack::ReceivedMessage& msg)
 {
   try
   {
-    std::vector<uint32_t> alive_ids;
-    
+    std::vector<int32_t> alive_ids;
+
     auto args = msg.ArgumentsBegin();
     while (args != msg.ArgumentsEnd())
     {
       alive_ids.push_back((args++)->AsInt32());
     }
-    
-    // Update active status for all profiles
-    // For tokens
-    for (auto& slot : m_object_slots)
+
+    if (!m_device)
+      return;
+
+    auto& root = m_device->get_root_node();
+
+    // Process tokens
+    m_object_slots.mark_all_inactive();
+    for (int32_t id : alive_ids)
+      m_object_slots.mark_active_by_id(id);
+
+    if (auto* tok_node = root.find_child(std::string_view("tok")))
     {
-      slot.active = false;
-    }
-    for (uint32_t id : alive_ids)
-    {
-      auto it = m_object_session_to_slot.find(id);
-      if (it != m_object_session_to_slot.end())
+      auto freed = m_object_slots.free_inactive_slots();
+      for (int slot_idx : freed)
       {
-        m_object_slots[it->second].active = true;
-      }
-    }
-    
-    // For pointers
-    for (auto& slot : m_cursor_slots)
-    {
-      slot.active = false;
-    }
-    for (uint32_t id : alive_ids)
-    {
-      auto it = m_cursor_session_to_slot.find(id);
-      if (it != m_cursor_session_to_slot.end())
-      {
-        m_cursor_slots[it->second].active = true;
-      }
-    }
-    
-    // For bounds
-    for (auto& slot : m_blob_slots)
-    {
-      slot.active = false;
-    }
-    for (uint32_t id : alive_ids)
-    {
-      auto it = m_blob_session_to_slot.find(id);
-      if (it != m_blob_session_to_slot.end())
-      {
-        m_blob_slots[it->second].active = true;
-      }
-    }
-    
-    // Free inactive slots
-    if (m_device)
-    {
-      auto& root = m_device->get_root_node();
-      
-      // Free inactive token slots
-      if (auto* tok_node = root.find_child(std::string_view("tok")))
-      {
-        for (size_t i = 0; i < m_object_slots.size(); ++i)
+        if (auto* slot_node = tok_node->find_child(std::to_string(slot_idx)))
         {
-          if (!m_object_slots[i].active && m_object_slots[i].session_id != -1)
-          {
-            if (auto* slot_node = tok_node->find_child(std::to_string(i)))
-            {
-              if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
-                param->set_value(false);
-            }
-            m_object_session_to_slot.erase(m_object_slots[i].session_id);
-            m_object_slots[i].session_id = -1;
-          }
+          Tracking::TreeBuilder::update_param(slot_node, "active", false);
         }
       }
-      
-      // Free inactive pointer slots
-      if (auto* ptr_node = root.find_child(std::string_view("ptr")))
+    }
+
+    // Process pointers
+    m_cursor_slots.mark_all_inactive();
+    for (int32_t id : alive_ids)
+      m_cursor_slots.mark_active_by_id(id);
+
+    if (auto* ptr_node = root.find_child(std::string_view("ptr")))
+    {
+      auto freed = m_cursor_slots.free_inactive_slots();
+      for (int slot_idx : freed)
       {
-        for (size_t i = 0; i < m_cursor_slots.size(); ++i)
+        if (auto* slot_node = ptr_node->find_child(std::to_string(slot_idx)))
         {
-          if (!m_cursor_slots[i].active && m_cursor_slots[i].session_id != -1)
-          {
-            if (auto* slot_node = ptr_node->find_child(std::to_string(i)))
-            {
-              if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
-                param->set_value(false);
-            }
-            m_cursor_session_to_slot.erase(m_cursor_slots[i].session_id);
-            m_cursor_slots[i].session_id = -1;
-          }
+          Tracking::TreeBuilder::update_param(slot_node, "active", false);
         }
       }
-      
-      // Free inactive bounds slots
-      if (auto* bnd_node = root.find_child(std::string_view("bnd")))
+    }
+
+    // Process bounds
+    m_blob_slots.mark_all_inactive();
+    for (int32_t id : alive_ids)
+      m_blob_slots.mark_active_by_id(id);
+
+    if (auto* bnd_node = root.find_child(std::string_view("bnd")))
+    {
+      auto freed = m_blob_slots.free_inactive_slots();
+      for (int slot_idx : freed)
       {
-        for (size_t i = 0; i < m_blob_slots.size(); ++i)
+        if (auto* slot_node = bnd_node->find_child(std::to_string(slot_idx)))
         {
-          if (!m_blob_slots[i].active && m_blob_slots[i].session_id != -1)
-          {
-            if (auto* slot_node = bnd_node->find_child(std::to_string(i)))
-            {
-              if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
-                param->set_value(false);
-            }
-            m_blob_session_to_slot.erase(m_blob_slots[i].session_id);
-            m_blob_slots[i].session_id = -1;
-          }
+          Tracking::TreeBuilder::update_param(slot_node, "active", false);
         }
       }
     }
@@ -415,51 +358,40 @@ void TUIOProtocol::update_tuio2_token(int slot, const TUIO2Token& tok)
 {
   if (!m_device)
     return;
-  
+
   auto& root = m_device->get_root_node();
   auto* tok_node = root.find_child(std::string_view("tok"));
   if (!tok_node)
     return;
-  
+
   auto* slot_node = tok_node->find_child(std::to_string(slot));
   if (!slot_node)
     return;
-  
-  // Update all parameters
-  if (auto* param = slot_node->find_child(std::string_view("session_id"))->get_parameter())
-    param->set_value((int)tok.session_id);
-  if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
-    param->set_value(true);
-  if (auto* param = slot_node->find_child(std::string_view("user_id"))->get_parameter())
-    param->set_value((int)tok.user_id);
-  if (auto* param = slot_node->find_child(std::string_view("type_id"))->get_parameter())
-    param->set_value((int)tok.type_id);
-  if (auto* param = slot_node->find_child(std::string_view("component_id"))->get_parameter())
-    param->set_value((int)tok.component_id);
-  if (auto* param = slot_node->find_child(std::string_view("position"))->get_parameter())
-    param->set_value(ossia::vec2f{tok.x, tok.y});
-  if (auto* param = slot_node->find_child(std::string_view("angle"))->get_parameter())
-    param->set_value(tok.angle);
-  
+
+  using TB = Tracking::TreeBuilder;
+  TB::update_param(slot_node, "session_id", (int)tok.session_id);
+  TB::update_param(slot_node, "active", true);
+  TB::update_param(slot_node, "user_id", (int)tok.user_id);
+  TB::update_param(slot_node, "type_id", (int)tok.type_id);
+  TB::update_param(slot_node, "component_id", (int)tok.component_id);
+  TB::update_param(slot_node, "position", ossia::vec2f{tok.x, tok.y});
+  TB::update_param(slot_node, "angle", tok.angle);
+
   if (tok.x_vel && tok.y_vel)
   {
-    if (auto* param = slot_node->find_child(std::string_view("velocity"))->get_parameter())
-      param->set_value(ossia::vec2f{*tok.x_vel, *tok.y_vel});
+    TB::update_param(slot_node, "velocity", ossia::vec2f{*tok.x_vel, *tok.y_vel});
   }
   if (tok.a_vel)
   {
-    if (auto* param = slot_node->find_child(std::string_view("angle_velocity"))->get_parameter())
-      param->set_value(*tok.a_vel);
+    TB::update_param(slot_node, "angle_velocity", *tok.a_vel);
   }
   if (tok.m_acc)
   {
-    if (auto* param = slot_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
-      param->set_value(*tok.m_acc);
+    TB::update_param(slot_node, "motion_acceleration", *tok.m_acc);
   }
   if (tok.r_acc)
   {
-    if (auto* param = slot_node->find_child(std::string_view("rotation_acceleration"))->get_parameter())
-      param->set_value(*tok.r_acc);
+    TB::update_param(slot_node, "rotation_acceleration", *tok.r_acc);
   }
 }
 
@@ -467,57 +399,43 @@ void TUIOProtocol::update_tuio2_pointer(int slot, const TUIO2Pointer& ptr)
 {
   if (!m_device)
     return;
-  
+
   auto& root = m_device->get_root_node();
   auto* ptr_node = root.find_child(std::string_view("ptr"));
   if (!ptr_node)
     return;
-  
+
   auto* slot_node = ptr_node->find_child(std::to_string(slot));
   if (!slot_node)
     return;
-  
-  // Update all parameters
-  if (auto* param = slot_node->find_child(std::string_view("session_id"))->get_parameter())
-    param->set_value((int)ptr.session_id);
-  if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
-    param->set_value(true);
-  if (auto* param = slot_node->find_child(std::string_view("user_id"))->get_parameter())
-    param->set_value((int)ptr.user_id);
-  if (auto* param = slot_node->find_child(std::string_view("type_id"))->get_parameter())
-    param->set_value((int)ptr.type_id);
-  if (auto* param = slot_node->find_child(std::string_view("component_id"))->get_parameter())
-    param->set_value((int)ptr.component_id);
-  if (auto* param = slot_node->find_child(std::string_view("position"))->get_parameter())
-    param->set_value(ossia::vec2f{ptr.x, ptr.y});
-  if (auto* param = slot_node->find_child(std::string_view("angle"))->get_parameter())
-    param->set_value(ptr.angle);
-  if (auto* param = slot_node->find_child(std::string_view("shear"))->get_parameter())
-    param->set_value(ptr.shear);
-  if (auto* param = slot_node->find_child(std::string_view("radius"))->get_parameter())
-    param->set_value(ptr.radius);
-  if (auto* param = slot_node->find_child(std::string_view("pressure"))->get_parameter())
-    param->set_value(ptr.pressure);
-  
+
+  using TB = Tracking::TreeBuilder;
+  TB::update_param(slot_node, "session_id", (int)ptr.session_id);
+  TB::update_param(slot_node, "active", true);
+  TB::update_param(slot_node, "user_id", (int)ptr.user_id);
+  TB::update_param(slot_node, "type_id", (int)ptr.type_id);
+  TB::update_param(slot_node, "component_id", (int)ptr.component_id);
+  TB::update_param(slot_node, "position", ossia::vec2f{ptr.x, ptr.y});
+  TB::update_param(slot_node, "angle", ptr.angle);
+  TB::update_param(slot_node, "shear", ptr.shear);
+  TB::update_param(slot_node, "radius", ptr.radius);
+  TB::update_param(slot_node, "pressure", ptr.pressure);
+
   if (ptr.x_vel && ptr.y_vel)
   {
-    if (auto* param = slot_node->find_child(std::string_view("velocity"))->get_parameter())
-      param->set_value(ossia::vec2f{*ptr.x_vel, *ptr.y_vel});
+    TB::update_param(slot_node, "velocity", ossia::vec2f{*ptr.x_vel, *ptr.y_vel});
   }
   if (ptr.p_vel)
   {
-    if (auto* param = slot_node->find_child(std::string_view("pressure_velocity"))->get_parameter())
-      param->set_value(*ptr.p_vel);
+    TB::update_param(slot_node, "pressure_velocity", *ptr.p_vel);
   }
   if (ptr.m_acc)
   {
-    if (auto* param = slot_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
-      param->set_value(*ptr.m_acc);
+    TB::update_param(slot_node, "motion_acceleration", *ptr.m_acc);
   }
   if (ptr.p_acc)
   {
-    if (auto* param = slot_node->find_child(std::string_view("pressure_acceleration"))->get_parameter())
-      param->set_value(*ptr.p_acc);
+    TB::update_param(slot_node, "pressure_acceleration", *ptr.p_acc);
   }
 }
 
@@ -525,49 +443,39 @@ void TUIOProtocol::update_tuio2_bounds(int slot, const TUIO2Bounds& bnd)
 {
   if (!m_device)
     return;
-  
+
   auto& root = m_device->get_root_node();
   auto* bnd_node = root.find_child(std::string_view("bnd"));
   if (!bnd_node)
     return;
-  
+
   auto* slot_node = bnd_node->find_child(std::to_string(slot));
   if (!slot_node)
     return;
-  
-  // Update all parameters
-  if (auto* param = slot_node->find_child(std::string_view("session_id"))->get_parameter())
-    param->set_value((int)bnd.session_id);
-  if (auto* param = slot_node->find_child(std::string_view("active"))->get_parameter())
-    param->set_value(true);
-  if (auto* param = slot_node->find_child(std::string_view("position"))->get_parameter())
-    param->set_value(ossia::vec2f{bnd.x, bnd.y});
-  if (auto* param = slot_node->find_child(std::string_view("angle"))->get_parameter())
-    param->set_value(bnd.angle);
-  if (auto* param = slot_node->find_child(std::string_view("size"))->get_parameter())
-    param->set_value(ossia::vec2f{bnd.width, bnd.height});
-  if (auto* param = slot_node->find_child(std::string_view("area"))->get_parameter())
-    param->set_value(bnd.area);
-  
+
+  using TB = Tracking::TreeBuilder;
+  TB::update_param(slot_node, "session_id", (int)bnd.session_id);
+  TB::update_param(slot_node, "active", true);
+  TB::update_param(slot_node, "position", ossia::vec2f{bnd.x, bnd.y});
+  TB::update_param(slot_node, "angle", bnd.angle);
+  TB::update_param(slot_node, "size", ossia::vec2f{bnd.width, bnd.height});
+  TB::update_param(slot_node, "area", bnd.area);
+
   if (bnd.x_vel && bnd.y_vel)
   {
-    if (auto* param = slot_node->find_child(std::string_view("velocity"))->get_parameter())
-      param->set_value(ossia::vec2f{*bnd.x_vel, *bnd.y_vel});
+    TB::update_param(slot_node, "velocity", ossia::vec2f{*bnd.x_vel, *bnd.y_vel});
   }
   if (bnd.a_vel)
   {
-    if (auto* param = slot_node->find_child(std::string_view("angle_velocity"))->get_parameter())
-      param->set_value(*bnd.a_vel);
+    TB::update_param(slot_node, "angle_velocity", *bnd.a_vel);
   }
   if (bnd.m_acc)
   {
-    if (auto* param = slot_node->find_child(std::string_view("motion_acceleration"))->get_parameter())
-      param->set_value(*bnd.m_acc);
+    TB::update_param(slot_node, "motion_acceleration", *bnd.m_acc);
   }
   if (bnd.r_acc)
   {
-    if (auto* param = slot_node->find_child(std::string_view("rotation_acceleration"))->get_parameter())
-      param->set_value(*bnd.r_acc);
+    TB::update_param(slot_node, "rotation_acceleration", *bnd.r_acc);
   }
 }
 

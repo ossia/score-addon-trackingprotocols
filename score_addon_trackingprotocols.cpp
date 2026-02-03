@@ -3,6 +3,8 @@
 #include <score/plugins/FactorySetup.hpp>
 
 #include "TUIO/TUIOProtocolFactory.hpp"
+#include "PSN/PSNProtocolFactory.hpp"
+#include "RTTrP/RTTrPProtocolFactory.hpp"
 
 score_addon_trackingprotocols::score_addon_trackingprotocols() = default;
 score_addon_trackingprotocols::~score_addon_trackingprotocols() = default;
@@ -12,7 +14,10 @@ std::vector<score::InterfaceBase*> score_addon_trackingprotocols::factories(
 {
   return instantiate_factories<
       score::ApplicationContext,
-      FW<Device::ProtocolFactory, TUIO::TUIOProtocolFactory>
+      FW<Device::ProtocolFactory,
+         TUIO::TUIOProtocolFactory,
+         PSN::PSNProtocolFactory,
+         RTTrP::RTTrPProtocolFactory>
       >(ctx, key);
 }
 
