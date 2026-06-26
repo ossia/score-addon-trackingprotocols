@@ -16,7 +16,7 @@ QString PSNProtocolFactory::prettyName() const noexcept
 
 QString PSNProtocolFactory::category() const noexcept
 {
-  return StandardCategories::hardware;
+  return StandardCategories::tracking;
 }
 
 Device::DeviceInterface* PSNProtocolFactory::makeDevice(
@@ -63,7 +63,8 @@ bool PSNProtocolFactory::checkCompatibility(
 {
   auto a_set = a.deviceSpecificSettings.value<PSNSpecificSettings>();
   auto b_set = b.deviceSpecificSettings.value<PSNSpecificSettings>();
-  return a_set.port == b_set.port && a_set.multicastAddress == b_set.multicastAddress;
+  // Compatible (can coexist) when they don't share the same port+group.
+  return a_set.port != b_set.port || a_set.multicastAddress != b_set.multicastAddress;
 }
 
 }

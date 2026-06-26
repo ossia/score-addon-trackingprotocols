@@ -2,6 +2,7 @@
 #include "../Common/TrackingTreeBuilder.hpp"
 
 #include <ossia/network/base/device.hpp>
+#include <ossia/network/base/name_validation.hpp>
 #include <ossia/network/base/node.hpp>
 #include <ossia/network/base/parameter.hpp>
 
@@ -188,6 +189,12 @@ bool RTTrPProtocol::parse_packet(const uint8_t* data, std::size_t size)
 
   // Read packet ID
   m_packet_id = read_value<uint32_t>(ptr, !m_little_endian);
+
+  // Drop duplicate packets (retransmit / loopback echo).
+  if (m_have_prev_packet_id && m_packet_id == m_prev_packet_id)
+    return false;
+  m_prev_packet_id = m_packet_id;
+  m_have_prev_packet_id = true;
 
   // Read packet format (1 byte)
   uint8_t pkt_format = *ptr++;
@@ -521,15 +528,19 @@ void RTTrPProtocol::update_zone_parameter(const std::string& zone_name, bool occ
   if (!zones_node)
     return;
 
-  // Check if zone node exists
-  auto it = m_zone_nodes.find(zone_name);
+  // Zone names come off the wire unvalidated; sanitize before using them as
+  // ossia node names so spaces/slashes/non-ASCII don't produce invalid paths.
+  const std::string safe_name = ossia::net::sanitize_name(zone_name);
+  if (safe_name.empty())
+    return;
+
+  auto it = m_zone_nodes.find(safe_name);
   ossia::net::node_base* zone_node = nullptr;
 
   if (it == m_zone_nodes.end())
   {
-    // Create new zone node
-    zone_node = Tracking::TreeBuilder::create_zone_slot(*zones_node, zone_name);
-    m_zone_nodes[zone_name] = zone_node;
+    zone_node = Tracking::TreeBuilder::create_zone_slot(*zones_node, safe_name);
+    m_zone_nodes[safe_name] = zone_node;
   }
   else
   {

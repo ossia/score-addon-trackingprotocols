@@ -2,6 +2,7 @@
 
 #include "TrackingTypes.hpp"
 #include <ossia/detail/hash_map.hpp>
+#include <ossia/detail/logger.hpp>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -82,7 +83,9 @@ public:
       }
     }
 
-    // All slots are active - use slot 0 as fallback
+    // All slots are active. Fall back to slot 0 so callers keep working
+    // (some of them, like TUIO, don't check the return value). Warn once.
+    warn_overflow();
     return 0;
   }
 
@@ -128,6 +131,7 @@ public:
       }
     }
 
+    warn_overflow();
     return 0;
   }
 
@@ -236,11 +240,28 @@ public:
   SlotStrategy strategy() const { return m_strategy; }
 
 private:
+  // Emit a one-shot warning when all slots are active and the oldest slot is
+  // about to be clobbered. Fires once per SlotManager lifetime; callers can
+  // increase their pre-allocated slot count (numTrackers, numTrackables...)
+  // if they see this.
+  void warn_overflow()
+  {
+    if(m_overflow_warned)
+      return;
+    m_overflow_warned = true;
+    ossia::logger().warn(
+        "Tracking SlotManager: received more entities than allocated slots "
+        "({}); data for additional entities will overwrite slot 0. Increase "
+        "the protocol's slot count in device settings.",
+        m_slots.size());
+  }
+
   SlotStrategy m_strategy;
   std::vector<SlotInfo> m_slots;
   std::vector<EntityT> m_entities;
   ossia::hash_map<int32_t, int> m_id_to_slot;
   ossia::hash_map<std::string, int> m_name_to_slot;
+  bool m_overflow_warned{false};
 };
 
 }

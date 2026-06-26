@@ -16,7 +16,7 @@ QString RTTrPProtocolFactory::prettyName() const noexcept
 
 QString RTTrPProtocolFactory::category() const noexcept
 {
-  return StandardCategories::hardware;
+  return StandardCategories::tracking;
 }
 
 Device::DeviceInterface* RTTrPProtocolFactory::makeDevice(
@@ -63,7 +63,8 @@ bool RTTrPProtocolFactory::checkCompatibility(
 {
   auto a_set = a.deviceSpecificSettings.value<RTTrPSpecificSettings>();
   auto b_set = b.deviceSpecificSettings.value<RTTrPSpecificSettings>();
-  return a_set.port == b_set.port;
+  // Compatible (can coexist) when they listen on different ports.
+  return a_set.port != b_set.port;
 }
 
 }

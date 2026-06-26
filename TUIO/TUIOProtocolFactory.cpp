@@ -16,7 +16,7 @@ QString TUIOProtocolFactory::prettyName() const noexcept
 
 QString TUIOProtocolFactory::category() const noexcept
 {
-  return StandardCategories::hardware;
+  return StandardCategories::tracking;
 }
 
 Device::DeviceInterface* TUIOProtocolFactory::makeDevice(
@@ -63,7 +63,8 @@ bool TUIOProtocolFactory::checkCompatibility(
 {
   auto a_set = a.deviceSpecificSettings.value<TUIOSpecificSettings>();
   auto b_set = b.deviceSpecificSettings.value<TUIOSpecificSettings>();
-  return a_set.port == b_set.port;
+  // Compatible (can coexist) when they listen on different ports.
+  return a_set.port != b_set.port;
 }
 
 }

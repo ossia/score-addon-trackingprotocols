@@ -88,11 +88,9 @@ void PSNProtocol::setup_receive_socket()
   {
     ossia::net::inbound_socket_configuration config{
         .bind = "0.0.0.0",
-        .port = m_settings.port
+        .port = m_settings.port,
+        .multicast_group = m_settings.multicastAddress.toStdString(),
     };
-
-    // FIXME: // Join multicast group
-    // FIXME: config.broadcast = m_settings.multicastAddress.toStdString();
 
     m_receive_socket = std::make_unique<ossia::net::udp_receive_socket>(
         config, m_ctx->context);
@@ -126,17 +124,23 @@ void PSNProtocol::on_received_data(const char* data, std::size_t size)
 
   if (m_decoder.decode(data, size))
   {
-    // Check what type of packet we received
     const auto& info = m_decoder.get_info();
     const auto& pkt_data = m_decoder.get_data();
 
-    // Process info packet if available
+    // Drop retransmits: the header's frame_id increments per transmitted
+    // packet, so two consecutive equal values signal a duplicate.
+    const uint8_t incoming_frame_id
+        = !pkt_data.trackers.empty() ? pkt_data.header.frame_id : info.header.frame_id;
+    if (m_have_prev_frame_id && incoming_frame_id == m_prev_frame_id)
+      return;
+    m_prev_frame_id = incoming_frame_id;
+    m_have_prev_frame_id = true;
+
     if (!info.system_name.empty() || !info.tracker_names.empty())
     {
       process_info_packet(info);
     }
 
-    // Process data packet
     if (!pkt_data.trackers.empty())
     {
       process_data_packet(pkt_data);

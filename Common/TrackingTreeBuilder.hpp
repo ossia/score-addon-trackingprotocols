@@ -95,6 +95,18 @@ struct TreeBuilder
     return param;
   }
 
+  // Create a LIST parameter (dynamic-size array of ossia::value).
+  // Use update_param(node, name, std::vector<ossia::value>{...}) to update.
+  static ossia::net::parameter_base* create_list_param(
+      ossia::net::node_base& parent,
+      const std::string& name)
+  {
+    auto* node = parent.create_child(name);
+    auto* param = node->create_parameter(ossia::val_type::LIST);
+    param->set_value(std::vector<ossia::value>{});
+    return param;
+  }
+
   // Create a STRING parameter
   static ossia::net::parameter_base* create_string_param(
       ossia::net::node_base& parent,

@@ -117,6 +117,11 @@ private:
   // Frame info
   uint32_t m_packet_id{0};
   bool m_little_endian{true};
+
+  // Duplicate-packet rejection: RTTrP's 32-bit packet_id increments once per
+  // sent packet; repeats mean retransmits or echo loops.
+  uint32_t m_prev_packet_id{0};
+  bool m_have_prev_packet_id{false};
 };
 
 }

@@ -58,6 +58,11 @@ private:
   uint8_t m_frame_id{0};
   uint64_t m_timestamp{0};
   std::string m_system_name;
+
+  // Duplicate-packet rejection: PSN's header frame_id increments once per
+  // transmitted frame; repeats mean retransmits or loopback echoes.
+  uint8_t m_prev_frame_id{0};
+  bool m_have_prev_frame_id{false};
 };
 
 }
