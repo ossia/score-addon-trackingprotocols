@@ -196,18 +196,7 @@ void TUIOProtocol::setup_receive_socket()
 
     m_receive_socket->open();
     m_receive_socket->receive(
-        [this](const char* data, std::size_t sz)
-        {
-          if (!m_device)
-            return;
-
-          auto on_message = [this](auto&& msg) {
-            this->on_received_message(msg);
-          };
-
-          using processor = ossia::net::osc_packet_processor<decltype(on_message)>;
-          processor{on_message}(data, sz);
-        });
+        [this](const char* data, std::size_t sz) { process_packet(data, sz); });
   }
   catch (const std::exception& e)
   {
@@ -222,6 +211,23 @@ void TUIOProtocol::stop_receive()
     m_receive_socket->close();
     m_receive_socket.reset();
   }
+}
+
+void TUIOProtocol::process_packet(const char* data, std::size_t size)
+{
+  if (!m_device)
+    return;
+
+  auto on_message = [this](auto&& msg) { this->on_received_message(msg); };
+  using processor = ossia::net::osc_packet_processor<decltype(on_message)>;
+  processor{on_message}(data, size);
+}
+
+void TUIOProtocol::process_message(const oscpack::ReceivedMessage& msg)
+{
+  if (!m_device)
+    return;
+  on_received_message(msg);
 }
 
 void TUIOProtocol::on_received_message(const oscpack::ReceivedMessage& msg)

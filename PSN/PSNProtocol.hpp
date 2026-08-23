@@ -12,6 +12,7 @@
 #include <psn_decoder.hpp>
 
 #include <chrono>
+#include <optional>
 
 namespace PSN
 {
@@ -32,6 +33,16 @@ public:
   bool push_raw(const ossia::net::full_parameter_data&) override { return false; }
   bool observe(ossia::net::parameter_base&, bool) override { return false; }
   bool update(ossia::net::node_base& node_base) override { return false; }
+
+  /**
+   * @brief Decodes one PSN datagram (info or data packet) and applies it to
+   * the device tree.
+   *
+   * This is what the receive socket feeds; it is public so that the protocol
+   * can be driven from captured or synthesized packets.
+   * @return false if the packet was rejected (undecodable, duplicate frame).
+   */
+  bool process_packet(const char* data, std::size_t size);
 
 private:
   void setup_receive_socket();
@@ -59,10 +70,13 @@ private:
   uint64_t m_timestamp{0};
   std::string m_system_name;
 
-  // Duplicate-packet rejection: PSN's header frame_id increments once per
-  // transmitted frame; repeats mean retransmits or loopback echoes.
-  uint8_t m_prev_frame_id{0};
-  bool m_have_prev_frame_id{false};
+  // Frame ids of the last info and data frames applied to the tree. The
+  // decoder commits a frame once all its packets arrived (a frame spans
+  // several packets past ~1500 bytes) and keeps it until the next one, so a
+  // packet is applied only when it completed a new frame. Info and data
+  // frames have independent counters.
+  std::optional<uint8_t> m_last_info_frame;
+  std::optional<uint8_t> m_last_data_frame;
 };
 
 }

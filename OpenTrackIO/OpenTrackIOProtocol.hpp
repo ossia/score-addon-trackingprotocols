@@ -35,6 +35,17 @@ public:
   bool observe(ossia::net::parameter_base&, bool) override { return false; }
   bool update(ossia::net::node_base&) override { return false; }
 
+  /**
+   * @brief Decodes one OTrk datagram received for the given source number and
+   * applies the sample it completes to the device tree.
+   *
+   * This is what the per-source receive sockets feed; it is public so that the
+   * protocol can be driven from captured or synthesized datagrams. Segments
+   * accumulate per source until the last one.
+   * @return true if a complete sample was decoded and applied.
+   */
+  bool process_datagram(int sourceNumber, const char* data, std::size_t size);
+
 private:
   // One listener per source number. Each has its own UDP socket joined to
   // 239.135.1.<sourceNumber> and its own reassembly state so segments from
@@ -54,7 +65,8 @@ private:
 
   void start_listeners();
   void stop_listeners();
-  void on_datagram(SourceListener& s, const char* data, std::size_t size);
+  SourceListener& listener_for(int sourceNumber);
+  bool on_datagram(SourceListener& s, const char* data, std::size_t size);
   void apply_sample(
       const opentrackio::OpenTrackIOSample& sample, int sourceNumber);
 

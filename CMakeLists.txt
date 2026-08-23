@@ -28,6 +28,7 @@ set(HDRS
 
   # RTTrP protocol
   "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPDevice.hpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPParser.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPProtocol.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPProtocolFactory.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPProtocolSettingsWidget.hpp"
@@ -35,6 +36,7 @@ set(HDRS
 
   # OpenTrackIO protocol (SMPTE RiS-OSVP)
   "${CMAKE_CURRENT_SOURCE_DIR}/OpenTrackIO/OpenTrackIODevice.hpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/OpenTrackIO/OTrkHeader.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/OpenTrackIO/OpenTrackIOProtocol.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/OpenTrackIO/OpenTrackIOProtocolFactory.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/OpenTrackIO/OpenTrackIOProtocolSettingsWidget.hpp"
@@ -62,6 +64,7 @@ set(SRCS
 
   # RTTrP protocol
   "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPDevice.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPParser.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPProtocol.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPProtocolFactory.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/RTTrP/RTTrPProtocolSettingsWidget.cpp"
@@ -134,3 +137,10 @@ endif()
 
 # Target-specific options
 setup_score_plugin(${PROJECT_NAME})
+
+# Tests: parsers against the protocol specifications, and the devices against
+# the explorer. score_add_test is only defined inside the score tree with
+# SCORE_TESTING on; an out-of-tree addon build has no tests.
+if(SCORE_TESTING AND COMMAND score_add_test)
+  add_subdirectory(Tests)
+endif()
