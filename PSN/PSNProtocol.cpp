@@ -119,33 +119,44 @@ void PSNProtocol::stop_receive()
 
 void PSNProtocol::on_received_data(const char* data, std::size_t size)
 {
+  process_packet(data, size);
+}
+
+bool PSNProtocol::process_packet(const char* data, std::size_t size)
+{
   if (!m_device)
-    return;
+    return false;
 
-  if (m_decoder.decode(data, size))
+  if (!m_decoder.decode(data, size))
+    return false;
+
+  // The decoder hands out the last *complete* info and data frames; apply
+  // each of them once, when its frame id changes. A frame split over several
+  // packets thus lands whole, a retransmitted frame is applied once, and info
+  // and data frames - independent counters - never shadow each other.
+  bool applied = false;
+
+  // A decoded header has a packet count of at least one; the decoder also
+  // fills info.tracker_names with empty names for the trackers it sees in
+  // data packets, so that map is no sign of an info frame.
+  const auto& info = m_decoder.get_info();
+  if (info.header.frame_packet_count > 0 && m_last_info_frame != info.header.frame_id)
   {
-    const auto& info = m_decoder.get_info();
-    const auto& pkt_data = m_decoder.get_data();
-
-    // Drop retransmits: the header's frame_id increments per transmitted
-    // packet, so two consecutive equal values signal a duplicate.
-    const uint8_t incoming_frame_id
-        = !pkt_data.trackers.empty() ? pkt_data.header.frame_id : info.header.frame_id;
-    if (m_have_prev_frame_id && incoming_frame_id == m_prev_frame_id)
-      return;
-    m_prev_frame_id = incoming_frame_id;
-    m_have_prev_frame_id = true;
-
-    if (!info.system_name.empty() || !info.tracker_names.empty())
-    {
-      process_info_packet(info);
-    }
-
-    if (!pkt_data.trackers.empty())
-    {
-      process_data_packet(pkt_data);
-    }
+    m_last_info_frame = info.header.frame_id;
+    process_info_packet(info);
+    applied = true;
   }
+
+  const auto& pkt_data = m_decoder.get_data();
+  if (pkt_data.header.frame_packet_count > 0 && !pkt_data.trackers.empty()
+      && m_last_data_frame != pkt_data.header.frame_id)
+  {
+    m_last_data_frame = pkt_data.header.frame_id;
+    process_data_packet(pkt_data);
+    applied = true;
+  }
+
+  return applied;
 }
 
 void PSNProtocol::process_info_packet(const ::psn::psn_decoder::info_t& info)

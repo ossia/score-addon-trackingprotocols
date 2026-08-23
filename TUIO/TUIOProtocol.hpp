@@ -76,6 +76,18 @@ public:
   bool observe(ossia::net::parameter_base&, bool) override { return false; }
   bool update(ossia::net::node_base& node_base) override { return false; }
 
+  /**
+   * @brief Decodes one OSC packet (message or bundle) and applies the TUIO
+   * messages it contains to the device tree.
+   *
+   * This is what the receive socket feeds; it is public so that the protocol
+   * can be driven from captured or synthesized packets.
+   */
+  void process_packet(const char* data, std::size_t size);
+
+  //! Applies one already-decoded TUIO message.
+  void process_message(const oscpack::ReceivedMessage& msg);
+
 private:
   void setup_receive_socket();
   void stop_receive();

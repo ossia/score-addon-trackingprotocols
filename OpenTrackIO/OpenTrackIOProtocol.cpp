@@ -1,5 +1,6 @@
 #include "OpenTrackIOProtocol.hpp"
 #include "../Common/TrackingTreeBuilder.hpp"
+#include "OTrkHeader.hpp"
 
 #include <ossia/detail/logger.hpp>
 #include <ossia/network/base/device.hpp>
@@ -13,81 +14,7 @@
 namespace OpenTrackIO
 {
 
-// OpenTrackIO 1.0.1 wire format, per the SMPTE RIS-OSVP reference
-// (ris-osvp-metadata-camdkit/src/test/python/parser).
-//
-//   Byte  Size  Field
-//   0     4     "OTrk" (ASCII magic)
-//   4     1     reserved (0)
-//   5     1     encoding (0x01 = JSON, 0x02 = CBOR)
-//   6     2     sequence_number (uint16 BE, per-segment, wraps at 0xFFFF)
-//   8     4     segment_offset (uint32 BE, byte offset into reassembled payload)
-//   12    2     [bit 15: last_segment] | [bits 0..14: payload_length]
-//   14    2     Fletcher-16 checksum over header[0..14) ++ payload  (uint16 BE)
-//   16    ...   payload (JSON text or CBOR bytes)
-namespace
-{
-constexpr std::size_t OTRK_HEADER_LEN = 16;
-constexpr uint8_t OTRK_ENC_JSON = 0x01;
-constexpr uint8_t OTRK_ENC_CBOR = 0x02;
-
-struct OTrkHeader
-{
-  uint8_t encoding{0};
-  uint16_t sequence{0};
-  uint32_t segment_offset{0};
-  bool last_segment{false};
-  uint16_t payload_length{0};
-  uint16_t checksum{0};
-};
-
-inline uint16_t read_u16_be(const uint8_t* p) noexcept
-{
-  return uint16_t((uint16_t(p[0]) << 8) | uint16_t(p[1]));
-}
-inline uint32_t read_u32_be(const uint8_t* p) noexcept
-{
-  return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16)
-       | (uint32_t(p[2]) << 8)  |  uint32_t(p[3]);
-}
-
-uint16_t fletcher16(const uint8_t* data, std::size_t len) noexcept
-{
-  uint16_t sum1 = 0, sum2 = 0;
-  for(std::size_t i = 0; i < len; ++i)
-  {
-    sum1 = uint16_t((sum1 + data[i]) % 256u);
-    sum2 = uint16_t((sum2 + sum1) % 256u);
-  }
-  return uint16_t((sum2 << 8) | sum1);
-}
-
-bool parse_header(const char* data, std::size_t size, OTrkHeader& out)
-{
-  if(size < OTRK_HEADER_LEN)
-    return false;
-  const auto* d = reinterpret_cast<const uint8_t*>(data);
-  if(std::memcmp(d, "OTrk", 4) != 0)
-    return false;
-  out.encoding = d[5];
-  if(out.encoding != OTRK_ENC_JSON && out.encoding != OTRK_ENC_CBOR)
-    return false;
-  out.sequence       = read_u16_be(d + 6);
-  out.segment_offset = read_u32_be(d + 8);
-  const uint16_t len_flag = read_u16_be(d + 12);
-  out.last_segment   = (len_flag & 0x8000) != 0;
-  out.payload_length = uint16_t(len_flag & 0x7FFF);
-  out.checksum       = read_u16_be(d + 14);
-  if(size < OTRK_HEADER_LEN + out.payload_length)
-    return false;
-  // Fletcher-16 over header[0..14) ++ payload
-  std::vector<uint8_t> buf;
-  buf.reserve(14u + out.payload_length);
-  buf.insert(buf.end(), d, d + 14);
-  buf.insert(buf.end(), d + OTRK_HEADER_LEN, d + OTRK_HEADER_LEN + out.payload_length);
-  return fletcher16(buf.data(), buf.size()) == out.checksum;
-}
-}
+// The OTrk transport header lives in OTrkHeader.hpp.
 
 OpenTrackIOProtocol::OpenTrackIOProtocol(
     const ossia::net::network_context_ptr& ctx,
@@ -341,19 +268,19 @@ void OpenTrackIOProtocol::stop_listeners()
   m_listeners.clear();
 }
 
-void OpenTrackIOProtocol::on_datagram(
+bool OpenTrackIOProtocol::on_datagram(
     SourceListener& s, const char* data, std::size_t size)
 {
   if(!m_device)
-    return;
+    return false;
 
   OTrkHeader hdr{};
-  if(!parse_header(data, size, hdr))
-    return;
+  if(!otrk_parse_header(data, size, hdr))
+    return false;
 
   // Duplicate packet (same sequence as previous on this source).
   if(s.have_prev_sequence && hdr.sequence == s.prev_sequence)
-    return;
+    return false;
   s.prev_sequence = hdr.sequence;
   s.have_prev_sequence = true;
   s.current_encoding = hdr.encoding;
@@ -363,7 +290,7 @@ void OpenTrackIOProtocol::on_datagram(
   {
     s.reassembly.clear();
     if(hdr.segment_offset != 0)
-      return;
+      return false;
   }
   const auto* payload
       = reinterpret_cast<const uint8_t*>(data) + OTRK_HEADER_LEN;
@@ -371,7 +298,7 @@ void OpenTrackIOProtocol::on_datagram(
       s.reassembly.end(), payload, payload + hdr.payload_length);
 
   if(!hdr.last_segment)
-    return;
+    return false;
 
   opentrackio::OpenTrackIOSample sample;
   bool ok = false;
@@ -389,7 +316,7 @@ void OpenTrackIOProtocol::on_datagram(
     ossia::logger().warn(
         "OpenTrackIO: source {} decode exception: {}", s.source_number, e.what());
     s.reassembly.clear();
-    return;
+    return false;
   }
   s.reassembly.clear();
 
@@ -398,7 +325,7 @@ void OpenTrackIOProtocol::on_datagram(
     for(const auto& msg : sample.getErrors())
       ossia::logger().debug(
           "OpenTrackIO source {}: parse error: {}", s.source_number, msg);
-    return;
+    return false;
   }
 
   // The sample carries its own sourceNumber. Prefer that; fall back to the
@@ -406,6 +333,28 @@ void OpenTrackIOProtocol::on_datagram(
   const int reported_src
       = sample.sourceNumber ? int(sample.sourceNumber->value) : s.source_number;
   apply_sample(sample, reported_src);
+  return true;
+}
+
+OpenTrackIOProtocol::SourceListener& OpenTrackIOProtocol::listener_for(int sourceNumber)
+{
+  for(auto& l : m_listeners)
+    if(l && l->source_number == sourceNumber)
+      return *l;
+
+  // No socket for this source: a listener that is only ever fed by hand.
+  auto listener = std::make_unique<SourceListener>();
+  listener->source_number = sourceNumber;
+  m_listeners.push_back(std::move(listener));
+  return *m_listeners.back();
+}
+
+bool OpenTrackIOProtocol::process_datagram(
+    int sourceNumber, const char* data, std::size_t size)
+{
+  if(!m_device)
+    return false;
+  return on_datagram(listener_for(sourceNumber), data, size);
 }
 
 // ----- Decode + apply ------------------------------------------------------
