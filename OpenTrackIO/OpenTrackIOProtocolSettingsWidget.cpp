@@ -4,7 +4,6 @@
 
 #include <QCheckBox>
 #include <QFormLayout>
-#include <QLabel>
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QVariant>
@@ -64,16 +63,6 @@ OpenTrackIOProtocolSettingsWidget::OpenTrackIOProtocolSettingsWidget(QWidget* pa
   layout->addRow(tr("Accept JSON payloads"), m_acceptJSONCheck);
   layout->addRow(tr("Accept CBOR payloads"), m_acceptCBORCheck);
 
-  auto info = new QLabel(tr(
-      "OpenTrackIO (SMPTE RiS-OSVP)\n\n"
-      "Receives on-set virtual production metadata (camera pose, lens,\n"
-      "timing/timecode, PTP sync) on UDP multicast.\n"
-      "One multicast group is joined per source number:\n"
-      "  239.135.1.<N>:55555 for each N in [min..max].\n\n"
-      "Payload: JSON (or CBOR) behind a 16-byte OTrk header.\n"
-      "Reference: https://www.opentrackio.org/"));
-  info->setWordWrap(true);
-  layout->addRow(info);
   setLayout(layout);
 }
 

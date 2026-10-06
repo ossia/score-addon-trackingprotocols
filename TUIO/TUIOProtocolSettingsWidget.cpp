@@ -3,7 +3,6 @@
 #include "TUIOSpecificSettings.hpp"
 
 #include <QFormLayout>
-#include <QLabel>
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QComboBox>
@@ -46,26 +45,7 @@ TUIOProtocolSettingsWidget::TUIOProtocolSettingsWidget(QWidget* parent)
   layout->addRow(tr("Number of Cursors"), m_numCursorsEdit);
   layout->addRow(tr("Number of Blobs"), m_numBlobsEdit);
   layout->addRow(tr("Protocol Version"), m_versionCombo);
-  
-  auto info = new QLabel(tr(
-      "TUIO Protocol\n"
-      "Receives TUIO messages on the specified UDP port.\n"
-      "Default port: 3333\n\n"
-      "Slot configuration:\n"
-      "Set the number of fixed slots for each profile type.\n"
-      "Incoming TUIO session IDs will be mapped to these slots\n"
-      "in a round-robin fashion.\n\n"
-      "TUIO 1.1 profiles:\n"
-      "- 2Dobj: Tangible objects with position and rotation\n"
-      "- 2Dcur: Touch cursors with position\n"
-      "- 2Dblb: Blob regions with position, size and rotation\n\n"
-      "TUIO 2.0 profiles:\n"
-      "- tok: Tokens (tagged objects) with extended attributes\n"
-      "- ptr: Pointers with pressure and shear\n"
-      "- bnd: Bounds with detailed geometry"));
-  info->setWordWrap(true);
-  layout->addRow(info);
-  
+
   setLayout(layout);
 }
 

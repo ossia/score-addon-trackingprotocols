@@ -3,7 +3,6 @@
 #include "PSNSpecificSettings.hpp"
 
 #include <QFormLayout>
-#include <QLabel>
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QCheckBox>
@@ -50,22 +49,6 @@ PSNProtocolSettingsWidget::PSNProtocolSettingsWidget(QWidget* parent)
   layout->addRow(tr("Enable Acceleration"), m_enableAccelerationCheck);
   layout->addRow(tr("Enable Orientation"), m_enableOrientationCheck);
   layout->addRow(tr("Enable Target Position"), m_enableTargetPositionCheck);
-
-  auto info = new QLabel(tr(
-      "PosiStageNet (PSN) Protocol\n\n"
-      "Receives PSN tracker data on the specified UDP multicast group.\n"
-      "Default: 236.10.10.10:56565\n\n"
-      "PSN is commonly used for:\n"
-      "- Blacktrax tracking systems\n"
-      "- Stage tracking automation\n"
-      "- Live entertainment tracking\n\n"
-      "Data includes:\n"
-      "- Position (X, Y, Z in mm)\n"
-      "- Orientation (Roll, Pitch, Yaw)\n"
-      "- Velocity and Acceleration\n"
-      "- Target position (automation)"));
-  info->setWordWrap(true);
-  layout->addRow(info);
 
   setLayout(layout);
 }

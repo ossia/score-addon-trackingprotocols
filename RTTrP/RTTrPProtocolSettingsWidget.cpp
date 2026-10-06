@@ -3,7 +3,6 @@
 #include "RTTrPSpecificSettings.hpp"
 
 #include <QFormLayout>
-#include <QLabel>
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QCheckBox>
@@ -60,22 +59,6 @@ RTTrPProtocolSettingsWidget::RTTrPProtocolSettingsWidget(QWidget* parent)
   layout->addRow(tr("Enable Velocity"), m_enableVelocityCheck);
   layout->addRow(tr("Enable Acceleration"), m_enableAccelerationCheck);
   layout->addRow(tr("Enable Zones"), m_enableZonesCheck);
-
-  auto info = new QLabel(tr(
-      "RTTrP (Real-Time Tracking Protocol)\n\n"
-      "Receives RTTrP tracking data on the specified UDP port.\n"
-      "Default port: 24002\n\n"
-      "RTTrP is commonly used for:\n"
-      "- BlackTrax tracking systems\n"
-      "- Motion capture integration\n"
-      "- Real-time performer tracking\n\n"
-      "Data includes:\n"
-      "- Position (X, Y, Z in mm)\n"
-      "- Orientation (Quaternion or Euler)\n"
-      "- LED marker positions\n"
-      "- Zone collision detection"));
-  info->setWordWrap(true);
-  layout->addRow(info);
 
   setLayout(layout);
 }
