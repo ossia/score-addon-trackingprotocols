@@ -61,6 +61,10 @@ bool RTTrPProtocolFactory::checkCompatibility(
     const Device::DeviceSettings& a,
     const Device::DeviceSettings& b) const noexcept
 {
+  // Settings of another protocol read back as our defaults, which would then
+  // look like a port clash.
+  if(a.protocol != b.protocol)
+    return true;
   auto a_set = a.deviceSpecificSettings.value<RTTrPSpecificSettings>();
   auto b_set = b.deviceSpecificSettings.value<RTTrPSpecificSettings>();
   // Compatible (can coexist) when they listen on different ports.
