@@ -1,6 +1,5 @@
 project(score_addon_trackingprotocols LANGUAGES CXX)
 
-return()
 # Find OpenXR early so we can conditionally include files
 find_package(OpenXR QUIET)
 
