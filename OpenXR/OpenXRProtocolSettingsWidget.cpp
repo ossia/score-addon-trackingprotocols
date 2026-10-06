@@ -36,15 +36,8 @@ OpenXRProtocolSettingsWidget::OpenXRProtocolSettingsWidget(QWidget* parent)
   layout->addRow(tr("Poll Rate"), m_pollRate);
 
   auto info = new QLabel(tr(
-      "OpenXR Protocol\n\n"
-      "Connects to an OpenXR runtime to receive VR tracking data.\n\n"
-      "Controllers:\n"
-      "- Left/Right hand position and orientation\n"
-      "- Trigger and grab values\n\n"
-      "Hand Tracking (if supported):\n"
-      "- Full 26-joint skeleton per hand\n"
-      "- Position, orientation, and radius for each joint\n\n"
-      "Requires an active OpenXR runtime (SteamVR, Monado, etc.)"));
+      "Requires an active OpenXR runtime with OpenGL support. Hand tracking "
+      "requires XR_EXT_hand_tracking."));
   info->setWordWrap(true);
   layout->addRow(info);
 
