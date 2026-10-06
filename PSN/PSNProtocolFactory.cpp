@@ -61,6 +61,10 @@ bool PSNProtocolFactory::checkCompatibility(
     const Device::DeviceSettings& a,
     const Device::DeviceSettings& b) const noexcept
 {
+  // Settings of another protocol read back as our defaults, which would then
+  // look like a port clash.
+  if(a.protocol != b.protocol)
+    return true;
   auto a_set = a.deviceSpecificSettings.value<PSNSpecificSettings>();
   auto b_set = b.deviceSpecificSettings.value<PSNSpecificSettings>();
   // Compatible (can coexist) when they don't share the same port+group.

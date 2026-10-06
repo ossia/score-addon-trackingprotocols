@@ -131,7 +131,8 @@ public:
       const Device::DeviceSettings& a,
       const Device::DeviceSettings& b) const noexcept override
   {
-    return false; // Only one OpenXR instance allowed
+    // Only one OpenXR session per process
+    return a.protocol != b.protocol;
   }
 };
 
