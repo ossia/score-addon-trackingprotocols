@@ -6,7 +6,7 @@
 	url = https://github.com/RTTrP/RTTrP-v2.4.2.0.git
 [submodule "3rdparty/opentrackio-cpp"]
 	path = 3rdparty/opentrackio-cpp
-	url = https://github.com/mosys/opentrackio-cpp.git
+	url = https://github.com/ossia/opentrackio-cpp.git
 [submodule "3rdparty/tsopenxr"]
 	path = 3rdparty/tsopenxr
 	url = https://github.com/cnlohr/tsopenxr/

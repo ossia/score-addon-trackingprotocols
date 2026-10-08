@@ -97,6 +97,7 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 # Link
 target_link_libraries(${PROJECT_NAME} PUBLIC
   score_plugin_deviceexplorer
+  fmt::fmt
 )
 
 # Add OpenXR support if available
