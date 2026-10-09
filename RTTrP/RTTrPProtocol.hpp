@@ -1,6 +1,7 @@
 #pragma once
-
+#include "RTTrPParser.hpp"
 #include "RTTrPSpecificSettings.hpp"
+
 #include "../Common/TrackingTypes.hpp"
 #include "../Common/TrackingSlotManager.hpp"
 
@@ -14,68 +15,12 @@
 
 namespace RTTrP
 {
-
-// RTTrP module type IDs
-enum class ModuleType : uint8_t
-{
-  Trackable = 0x01,
-  CentroidMod = 0x02,
-  QuatModule = 0x03,
-  EulerModule = 0x04,
-  LEDModule = 0x06,
-  CentroidAccVelMod = 0x20,
-  LEDAccVelMod = 0x21,
-  ZoneMod = 0x23
-};
-
-// Parsed trackable data
-struct ParsedTrackable
-{
-  std::string name;
-  uint32_t timestamp{0};
-
-  // Centroid position
-  bool has_centroid{false};
-  double x{}, y{}, z{};
-  uint16_t latency{0};
-
-  // Quaternion orientation
-  bool has_quaternion{false};
-  double qx{}, qy{}, qz{}, qw{};
-
-  // Euler orientation
-  bool has_euler{false};
-  double roll{}, pitch{}, yaw{};
-  uint16_t euler_order{0};
-
-  // Velocity and acceleration (from CentroidAccVelMod)
-  bool has_velocity{false};
-  float vx{}, vy{}, vz{};
-  float ax{}, ay{}, az{};
-
-  // LED markers
-  struct LEDData
-  {
-    uint8_t index{0};
-    double x{}, y{}, z{};
-    float vx{}, vy{}, vz{};
-    float ax{}, ay{}, az{};
-    uint16_t latency{0};
-    bool has_velocity{false};
-  };
-  std::vector<LEDData> leds;
-
-  // Zones
-  std::vector<std::string> zones;
-};
-
 class RTTrPProtocol final : public ossia::net::protocol_base
 {
 public:
   explicit RTTrPProtocol(
       const ossia::net::network_context_ptr& ctx,
       const RTTrPSpecificSettings& settings);
-
   ~RTTrPProtocol();
 
   void set_device(ossia::net::device_base& dev) override;
@@ -86,26 +31,27 @@ public:
   bool observe(ossia::net::parameter_base&, bool) override { return false; }
   bool update(ossia::net::node_base& node_base) override { return false; }
 
+  /**
+   * @brief Decodes one RTTrPM datagram and applies it to the device tree.
+   *
+   * This is what the receive socket feeds; it is public so that the protocol
+   * can be driven from captured or synthesized packets.
+   * @return false if the packet was rejected (bad header, duplicate packet id).
+   */
+  bool process_packet(const char* data, std::size_t size);
+
 private:
   void setup_receive_socket();
   void stop_receive();
   void on_received_data(const char* data, std::size_t size);
 
-  bool parse_packet(const uint8_t* data, std::size_t size);
-  bool parse_trackable(const uint8_t* data, std::size_t size, ParsedTrackable& out);
-
   void create_device_tree(ossia::net::node_base& root);
   void update_trackable_parameters(int slot, const ParsedTrackable& trackable);
   void update_zone_parameter(const std::string& zone_name, bool occupied);
 
-  // Binary parsing helpers
-  template<typename T>
-  static T read_value(const uint8_t*& ptr, bool swap_bytes);
-
   ossia::net::network_context_ptr m_ctx;
   std::unique_ptr<ossia::net::udp_receive_socket> m_receive_socket;
   ossia::net::device_base* m_device{nullptr};
-
   RTTrPSpecificSettings m_settings;
 
   // Slot management for trackables (name-based)
@@ -114,14 +60,12 @@ private:
   // Zone tracking
   ossia::hash_map<std::string, ossia::net::node_base*> m_zone_nodes;
 
-  // Frame info
-  uint32_t m_packet_id{0};
-  bool m_little_endian{true};
+  // Reused across packets to avoid reallocating the trackable list
+  ParsedPacket m_parsed;
 
   // Duplicate-packet rejection: RTTrP's 32-bit packet_id increments once per
   // sent packet; repeats mean retransmits or echo loops.
   uint32_t m_prev_packet_id{0};
   bool m_have_prev_packet_id{false};
 };
-
 }
